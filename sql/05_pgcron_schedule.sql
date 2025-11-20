@@ -1,0 +1,15 @@
+-- Example pg_cron job that triggers the NestAPI daily once it's running.
+-- Update the header token to match INTERNAL_JOBS_TOKEN.
+-- The statement is left commented so you can enable it manually after the
+-- API container is reachable on the Docker network.
+
+-- SELECT cron.schedule(
+--     'daily-report-enqueue',
+--     '10 2 * * *',
+--     $$
+--     SELECT http_post(
+--         url := 'http://api:8080/v1/cron/enqueue-daily',
+--         headers := jsonb_build_object('x-internal-token', 'change-me')
+--     );
+--     $$
+-- );

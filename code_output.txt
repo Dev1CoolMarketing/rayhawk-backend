@@ -1,0 +1,1565 @@
+FILE TREE
+.
+├── .env.example
+├── Dockerfile
+├── README.md
+├── docker-compose.yml
+├── nest-cli.json
+├── package.json
+├── sql
+│   ├── 01_schemas.sql
+│   ├── 02_tables_core.sql
+│   ├── 03_views_api.sql
+│   ├── 04_policies_rls.sql
+│   └── 05_pgcron_schedule.sql
+├── src
+│   ├── app.module.ts
+│   ├── common
+│   │   ├── decorators
+│   │   │   └── user.decorator.ts
+│   │   ├── filters
+│   │   │   └── http-exception.filter.ts
+│   │   ├── guards
+│   │   │   └── supabase-auth.guard.ts
+│   │   └── interceptors
+│   │       └── logging.interceptor.ts
+│   ├── entities
+│   │   ├── favorite-store.entity.ts
+│   │   ├── index.ts
+│   │   ├── lead-credit.entity.ts
+│   │   ├── store.entity.ts
+│   │   ├── subscription.entity.ts
+│   │   └── vendor.entity.ts
+│   ├── infra
+│   │   ├── bullmq.module.ts
+│   │   ├── db.module.ts
+│   │   ├── redis.module.ts
+│   │   └── swagger.ts
+│   ├── main.ts
+│   └── modules
+│       ├── billing
+│       │   ├── billing.controller.ts
+│       │   ├── billing.module.ts
+│       │   └── dto
+│       │       └── checkout.dto.ts
+│       ├── favorites
+│       │   ├── favorites.controller.ts
+│       │   ├── favorites.module.ts
+│       │   └── favorites.service.ts
+│       ├── health
+│       │   ├── health.controller.ts
+│       │   └── health.module.ts
+│       ├── jobs
+│       │   ├── jobs.controller.ts
+│       │   ├── jobs.module.ts
+│       │   └── jobs.service.ts
+│       ├── reports
+│       │   ├── reports.module.ts
+│       │   └── reports.service.ts
+│       ├── stores
+│       │   ├── dto
+│       │   │   └── create-store.dto.ts
+│       │   ├── stores.controller.ts
+│       │   ├── stores.module.ts
+│       │   └── stores.service.ts
+│       └── webhooks
+│           ├── stripe.webhook.controller.ts
+│           └── webhooks.module.ts
+├── tsconfig.build.json
+└── tsconfig.json
+
+.env.example
+```ini
+# API configuration
+NODE_ENV=development
+APP_PORT=8080
+APP_URL=http://localhost:8080
+
+# Supabase authentication
+SUPABASE_URL=https://utxzvtklzakanvrgdhmh.supabase.co
+SUPABASE_JWKS_URL=https://utxzvtklzakanvrgdhmh.supabase.co/auth/v1/.well-known/jwks.json
+
+# Data stores
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/appdb
+REDIS_URL=redis://localhost:6379
+
+# Stripe (optional)
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+# Internal integrations
+INTERNAL_JOBS_TOKEN=rayhawk-cron
+```
+
+Dockerfile
+```dockerfile
+# Build stage
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build && npm prune --production
+
+# Runtime stage
+FROM node:20-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+RUN addgroup -S app && adduser -S app -G app
+COPY --from=build /app/package*.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/dist ./dist
+EXPOSE 8080
+USER app
+CMD ["node", "dist/main.js"]
+```
+
+README.md
+```md
+# Rayhawk Backend
+
+NestJS REST API with Supabase-authenticated JWTs, Postgres schemas that mirror Supabase conventions, Redis-powered BullMQ workers, optional Stripe billing, and lightweight cron hooks.
+
+## Requirements
+- Node.js 20+
+- Docker + Docker Compose
+- Supabase project for issuing JWTs (hosted auth)
+
+## Quick Start
+1. `cp .env.example .env` and fill `SUPABASE_JWKS_URL`, Stripe secrets (optional), and `INTERNAL_JOBS_TOKEN` used by pg_cron.
+2. `docker compose up -d` to start Postgres (with `pg_cron`, `http`, `uuid-ossp`) and Redis. SQL files in `sql/` run automatically on first boot.
+3. `npm install` followed by `npm run dev` for hot reload, or `npm run build && npm start` to run the compiled app.
+4. Open Swagger UI at [http://localhost:8080/v1/docs](http://localhost:8080/v1/docs) and authorize with a Supabase JWT.
+5. (Optional) Re-run SQL files manually: `psql $DATABASE_URL -f sql/01_schemas.sql` ... `sql/04_policies_rls.sql` to keep schemas synchronized.
+6. (Optional) Enable the pg_cron schedule by executing `sql/05_pgcron_schedule.sql` once the API is reachable and replace the `x-internal-token` header with your `INTERNAL_JOBS_TOKEN`.
+
+## Architecture Notes
+- **Auth**: `SupabaseAuthGuard` verifies RS256 JWTs via the Supabase JWKS endpoint and injects `req.user { id, email, role }`. Use the `@User()` decorator inside controllers.
+- **Database**: TypeORM models target local Postgres schemas `core` and `api`, matching Supabase naming. Run the SQL files to create tables, views, RLS policies, and sample pg_cron schedule.
+- **Queues**: BullMQ (Redis) exposes `EMAIL` and `REPORTS` queues. The reports queue wires a scheduler + worker stub and powers the `/v1/cron/enqueue-daily` endpoint (guarded by `x-internal-token`).
+- **Billing & Webhooks**: Stripe checkout is optional—if secrets are empty the endpoint returns a placeholder URL. Webhooks expect the raw request body; configure `STRIPE_WEBHOOK_SECRET` to enable signature validation.
+- **Docs**: Swagger (+ bearer auth) lives at `/v1/docs`. Global prefix `/v1`, global validation pipe (whitelist/transform), logging interceptor, and HTTP exception filter are enabled in `main.ts`.
+
+## Docker Services
+- **postgres**: Based on `supabase/postgres` to include `pg_cron` and `http` extensions. Mounts `./sql` to bootstrap schemas.
+- **redis**: Vanilla Redis 7 for BullMQ.
+- **api**: Multi-stage Node 20 Alpine build using the provided Dockerfile. Exposes port `8080` and reads environment variables from `.env`.
+
+## Running Cron from Postgres
+`sql/05_pgcron_schedule.sql` shows how to register `http_post` with pg_cron targeting `http://api:8080/v1/cron/enqueue-daily`. Update the header token before uncommenting the statement. This allows pg_cron to call back into the API using the internal Docker network name `api`.
+
+## Production Notes
+- Migrate the `sql/` definitions into your managed Supabase Postgres instance and keep RLS enabled there.
+- Configure Supabase Settings → API → Exposed Schemas to include `core` and `api` so PostgREST can access the tables/views if needed.
+- Keep JWT verification pointed at your hosted Supabase JWKS; no local auth service is required.
+```
+
+docker-compose.yml
+```yaml
+version: '3.9'
+services:
+  postgres:
+    image: supabase/postgres:15.1.1.74
+    container_name: rayhawk-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: appdb
+      POSTGRES_USER: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d
+    command: >-
+      postgres -c shared_preload_libraries='pg_cron' -c cron.database_name='appdb'
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: rayhawk-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rayhawk-api
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: ["node", "dist/main.js"]
+
+volumes:
+  postgres_data:
+```
+
+nest-cli.json
+```json
+{
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src"
+}
+```
+
+package.json
+```json
+{
+  "name": "rayhawk-backend",
+  "version": "0.1.0",
+  "description": "Rayhawk API backend built with NestJS, Postgres, Redis, and BullMQ.",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "nest start --watch",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:prod": "NODE_ENV=production node dist/main.js",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f api"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.3.2",
+    "@nestjs/config": "^3.2.2",
+    "@nestjs/core": "^10.3.2",
+    "@nestjs/platform-express": "^10.3.2",
+    "@nestjs/swagger": "^7.1.18",
+    "@nestjs/typeorm": "^10.0.1",
+    "body-parser": "^1.20.3",
+    "bullmq": "^5.8.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "dotenv": "^16.4.5",
+    "ioredis": "^5.4.1",
+    "jose": "^5.9.3",
+    "pg": "^8.11.5",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.8.1",
+    "stripe": "^15.12.0",
+    "swagger-ui-express": "^5.0.1",
+    "typeorm": "^0.3.20",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.10",
+    "@nestjs/schematics": "^10.1.3",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.12",
+    "rimraf": "^5.0.7",
+    "ts-loader": "^9.5.1",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.5.4"
+  }
+}
+```
+
+sql/01_schemas.sql
+```sql
+-- Create core and api schemas to mirror Supabase conventions
+CREATE SCHEMA IF NOT EXISTS core;
+CREATE SCHEMA IF NOT EXISTS api;
+```
+
+sql/02_tables_core.sql
+```sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS http;
+
+SET search_path TO core, public;
+
+CREATE TABLE IF NOT EXISTS core.stores (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vendor_account uuid NOT NULL,
+    name text NOT NULL,
+    slug text UNIQUE NOT NULL,
+    status text NOT NULL DEFAULT 'active',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS core.favorite_stores (
+    account_id uuid NOT NULL,
+    store_id uuid NOT NULL REFERENCES core.stores(id) ON DELETE CASCADE,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (account_id, store_id)
+);
+
+CREATE TABLE IF NOT EXISTS core.vendors (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    owner_id uuid NOT NULL,
+    name text NOT NULL,
+    stripe_account_id text,
+    status text NOT NULL DEFAULT 'inactive',
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS core.subscriptions (
+    id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+    vendor_id uuid NOT NULL REFERENCES core.vendors(id) ON DELETE CASCADE,
+    stripe_customer_id text,
+    stripe_subscription_id text UNIQUE,
+    status text NOT NULL DEFAULT 'inactive',
+    current_period_end timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS core.lead_credits (
+    account_id uuid PRIMARY KEY,
+    credits integer NOT NULL DEFAULT 0,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON SCHEMA core IS 'Primary tables mirroring Supabase structure.';
+```
+
+sql/03_views_api.sql
+```sql
+SET search_path TO api, public;
+
+-- NOTE: On hosted Supabase, auth.uid() resolves to the requesting user's id.
+-- In local development, the NestJS API queries favorites directly, so this
+-- view is provided for parity but not queried by PostgREST.
+CREATE OR REPLACE VIEW api.my_favorite_stores AS
+SELECT s.*
+FROM core.stores s
+JOIN core.favorite_stores f ON f.store_id = s.id
+WHERE f.account_id = auth.uid();
+```
+
+sql/04_policies_rls.sql
+```sql
+ALTER TABLE core.favorite_stores ENABLE ROW LEVEL SECURITY;
+
+-- Supabase production policies (auth.uid() is provided by the platform)
+CREATE POLICY favorite_stores_select ON core.favorite_stores
+    FOR SELECT
+    USING (account_id = auth.uid());
+
+CREATE POLICY favorite_stores_insert ON core.favorite_stores
+    FOR INSERT
+    WITH CHECK (account_id = auth.uid());
+
+CREATE POLICY favorite_stores_delete ON core.favorite_stores
+    FOR DELETE
+    USING (account_id = auth.uid());
+```
+
+sql/05_pgcron_schedule.sql
+```sql
+-- Example pg_cron job that triggers the NestAPI daily once it's running.
+-- Update the header token to match INTERNAL_JOBS_TOKEN.
+-- The statement is left commented so you can enable it manually after the
+-- API container is reachable on the Docker network.
+
+-- SELECT cron.schedule(
+--     'daily-report-enqueue',
+--     '10 2 * * *',
+--     $$
+--     SELECT http_post(
+--         url := 'http://api:8080/v1/cron/enqueue-daily',
+--         headers := jsonb_build_object('x-internal-token', 'change-me')
+--     );
+--     $$
+-- );
+```
+
+src/app.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { BullMqModule } from './infra/bullmq.module';
+import { DbModule } from './infra/db.module';
+import { RedisModule } from './infra/redis.module';
+import { HealthModule } from './modules/health/health.module';
+import { StoresModule } from './modules/stores/stores.module';
+import { FavoritesModule } from './modules/favorites/favorites.module';
+import { BillingModule } from './modules/billing/billing.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { JobsModule } from './modules/jobs/jobs.module';
+import { ReportsModule } from './modules/reports/reports.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, cache: true }),
+    DbModule,
+    RedisModule,
+    BullMqModule,
+    HealthModule,
+    StoresModule,
+    FavoritesModule,
+    BillingModule,
+    WebhooksModule,
+    JobsModule,
+    ReportsModule,
+  ],
+})
+export class AppModule {}
+```
+
+src/common/decorators/user.decorator.ts
+```ts
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { SupabaseUser } from '../guards/supabase-auth.guard';
+
+export const User = createParamDecorator((_data: unknown, ctx: ExecutionContext): SupabaseUser | undefined => {
+  const request = ctx.switchToHttp().getRequest();
+  return request.user;
+});
+```
+
+src/common/filters/http-exception.filter.ts
+```ts
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Request, Response } from 'express';
+
+@Catch()
+export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
+  catch(exception: unknown, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
+
+    const status = exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
+    const payload = exception instanceof HttpException ? exception.getResponse() : null;
+
+    const message =
+      typeof payload === 'string'
+        ? payload
+        : (payload as Record<string, unknown>)?.['message'] ?? 'Unexpected error occurred';
+
+    if (status >= 500) {
+      this.logger.error(message, (exception as Error)?.stack);
+    }
+
+    response.status(status).json({
+      statusCode: status,
+      message,
+      path: request.url,
+      timestamp: new Date().toISOString(),
+    });
+  }
+}
+```
+
+src/common/guards/supabase-auth.guard.ts
+```ts
+import { CanActivate, ExecutionContext, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Request } from 'express';
+import { createRemoteJWKSet, JWTPayload, jwtVerify } from 'jose';
+
+export interface SupabaseUser {
+  id: string;
+  email?: string;
+  role?: string;
+}
+
+@Injectable()
+export class SupabaseAuthGuard implements CanActivate {
+  private readonly logger = new Logger(SupabaseAuthGuard.name);
+  private jwks?: ReturnType<typeof createRemoteJWKSet>;
+
+  constructor(private readonly config: ConfigService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<Request & { user?: SupabaseUser }>();
+    const token = this.extractToken(request);
+    if (!token) {
+      throw new UnauthorizedException('Missing bearer token');
+    }
+
+    const jwksUrl = this.config.get<string>('SUPABASE_JWKS_URL');
+    if (!jwksUrl) {
+      this.logger.error('SUPABASE_JWKS_URL is not configured');
+      throw new UnauthorizedException('Auth not configured');
+    }
+
+    this.jwks ??= createRemoteJWKSet(new URL(jwksUrl));
+
+    try {
+      const { payload } = await jwtVerify(token, this.jwks, {
+        algorithms: ['RS256'],
+      });
+
+      request.user = this.mapUser(payload);
+      return true;
+    } catch (error) {
+      this.logger.warn(`JWT verification failed: ${(error as Error).message}`);
+      throw new UnauthorizedException('Invalid token');
+    }
+  }
+
+  private extractToken(request: Request): string | undefined {
+    const header = request.headers['authorization'];
+    if (!header) {
+      return undefined;
+    }
+    const [type, token] = header.split(' ');
+    return type === 'Bearer' ? token : undefined;
+  }
+
+  private mapUser(payload: JWTPayload): SupabaseUser {
+    const appRole = (payload?.role as string) ?? (payload?.app_metadata as Record<string, unknown>)?.['role'];
+    return {
+      id: payload.sub as string,
+      email: (payload.email as string) ?? (payload.user_metadata as Record<string, unknown>)?.['email'],
+      role: typeof appRole === 'string' ? appRole : undefined,
+    };
+  }
+}
+```
+
+src/common/interceptors/logging.interceptor.ts
+```ts
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { Request } from 'express';
+import { Observable, tap } from 'rxjs';
+
+@Injectable()
+export class LoggingInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const req = context.switchToHttp().getRequest<Request>();
+    const { method, url } = req ?? { method: 'N/A', url: 'N/A' };
+    const started = Date.now();
+
+    return next.handle().pipe(
+      tap(() => {
+        const duration = Date.now() - started;
+        // eslint-disable-next-line no-console
+        console.log(`${method} ${url} -> ${duration}ms`);
+      }),
+    );
+  }
+}
+```
+
+src/entities/favorite-store.entity.ts
+```ts
+import { CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
+import { Store } from './store.entity';
+
+@Entity({ name: 'favorite_stores', schema: 'core' })
+export class FavoriteStore {
+  @PrimaryColumn({ name: 'account_id', type: 'uuid' })
+  accountId!: string;
+
+  @PrimaryColumn({ name: 'store_id', type: 'uuid' })
+  storeId!: string;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @ManyToOne(() => Store, (store) => store.favorites, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'store_id' })
+  store!: Store;
+}
+```
+
+src/entities/index.ts
+```ts
+export * from './store.entity';
+export * from './favorite-store.entity';
+export * from './vendor.entity';
+export * from './subscription.entity';
+export * from './lead-credit.entity';
+```
+
+src/entities/lead-credit.entity.ts
+```ts
+import { Column, Entity, PrimaryColumn, UpdateDateColumn } from 'typeorm';
+
+@Entity({ name: 'lead_credits', schema: 'core' })
+export class LeadCredit {
+  @PrimaryColumn({ name: 'account_id', type: 'uuid' })
+  accountId!: string;
+
+  @Column({ type: 'integer', default: 0 })
+  credits!: number;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+}
+```
+
+src/entities/store.entity.ts
+```ts
+import { Column, CreateDateColumn, Entity, Index, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { FavoriteStore } from './favorite-store.entity';
+
+@Entity({ name: 'stores', schema: 'core' })
+export class Store {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'vendor_account', type: 'uuid' })
+  vendorAccount!: string;
+
+  @Column({ type: 'text' })
+  name!: string;
+
+  @Index({ unique: true })
+  @Column({ type: 'text' })
+  slug!: string;
+
+  @Column({ type: 'text', default: 'active' })
+  status!: string;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt!: Date;
+
+  @OneToMany(() => FavoriteStore, (favorite) => favorite.store)
+  favorites?: FavoriteStore[];
+}
+```
+
+src/entities/subscription.entity.ts
+```ts
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Vendor } from './vendor.entity';
+
+@Entity({ name: 'subscriptions', schema: 'core' })
+export class Subscription {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @ManyToOne(() => Vendor, (vendor) => vendor.subscriptions, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'vendor_id' })
+  vendor!: Vendor;
+
+  @Column({ name: 'vendor_id', type: 'uuid' })
+  vendorId!: string;
+
+  @Column({ name: 'stripe_customer_id', type: 'text', nullable: true })
+  stripeCustomerId?: string | null;
+
+  @Column({ name: 'stripe_subscription_id', type: 'text', nullable: true, unique: true })
+  stripeSubscriptionId?: string | null;
+
+  @Column({ type: 'text', default: 'inactive' })
+  status!: string;
+
+  @Column({ name: 'current_period_end', type: 'timestamptz', nullable: true })
+  currentPeriodEnd?: Date | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+}
+```
+
+src/entities/vendor.entity.ts
+```ts
+import { Column, CreateDateColumn, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Subscription } from './subscription.entity';
+
+@Entity({ name: 'vendors', schema: 'core' })
+export class Vendor {
+  @PrimaryGeneratedColumn('uuid')
+  id!: string;
+
+  @Column({ name: 'owner_id', type: 'uuid' })
+  ownerId!: string;
+
+  @Column({ type: 'text' })
+  name!: string;
+
+  @Column({ name: 'stripe_account_id', type: 'text', nullable: true })
+  stripeAccountId?: string | null;
+
+  @Column({ type: 'text', default: 'inactive' })
+  status!: string;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @OneToMany(() => Subscription, (subscription) => subscription.vendor)
+  subscriptions?: Subscription[];
+}
+```
+
+src/infra/bullmq.module.ts
+```ts
+import { Inject, Logger, Module, OnModuleDestroy } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { Queue, QueueScheduler, Worker } from 'bullmq';
+import Redis from 'ioredis';
+
+export const QUEUES = {
+  EMAIL: 'email',
+  REPORTS: 'reports',
+} as const;
+
+export const REPORTS_QUEUE = Symbol('REPORTS_QUEUE');
+const REPORTS_SCHEDULER = Symbol('REPORTS_SCHEDULER');
+const REPORTS_WORKER = Symbol('REPORTS_WORKER');
+
+const createConnection = (url: string) =>
+  new Redis(url, {
+    maxRetriesPerRequest: null,
+  });
+
+@Module({
+  imports: [ConfigModule],
+  providers: [
+    {
+      provide: REPORTS_QUEUE,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL');
+        if (!redisUrl) {
+          throw new Error('REDIS_URL is required for BullMQ');
+        }
+        return new Queue(QUEUES.REPORTS, {
+          connection: createConnection(redisUrl),
+        });
+      },
+    },
+    {
+      provide: REPORTS_SCHEDULER,
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL');
+        if (!redisUrl) {
+          throw new Error('REDIS_URL is required for BullMQ');
+        }
+        const scheduler = new QueueScheduler(QUEUES.REPORTS, {
+          connection: createConnection(redisUrl),
+        });
+        await scheduler.waitUntilReady();
+        return scheduler;
+      },
+    },
+    {
+      provide: REPORTS_WORKER,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL');
+        if (!redisUrl) {
+          throw new Error('REDIS_URL is required for BullMQ');
+        }
+        const logger = new Logger('ReportsWorker');
+        const worker = new Worker(
+          QUEUES.REPORTS,
+          async (job) => {
+            logger.log(`Processing job ${job.name} (${job.id})`);
+            if (job.name === 'daily-summary') {
+              logger.log(`Summary payload: ${JSON.stringify(job.data?.summary ?? {})}`);
+            }
+          },
+          {
+            connection: createConnection(redisUrl),
+          },
+        );
+        worker.on('failed', (job, err) => {
+          logger.error(`Job ${job?.id} failed`, err.stack);
+        });
+        return worker;
+      },
+    },
+  ],
+  exports: [REPORTS_QUEUE],
+})
+export class BullMqModule implements OnModuleDestroy {
+  constructor(
+    @Inject(REPORTS_QUEUE) private readonly queue: Queue,
+    @Inject(REPORTS_SCHEDULER) private readonly scheduler: QueueScheduler,
+    @Inject(REPORTS_WORKER) private readonly worker: Worker,
+  ) {}
+
+  async onModuleDestroy() {
+    await Promise.all([this.queue.close(), this.scheduler.close(), this.worker.close()]);
+  }
+}
+```
+
+src/infra/db.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { FavoriteStore, LeadCredit, Store, Subscription, Vendor } from '../entities';
+
+@Module({
+  imports: [
+    ConfigModule,
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const url = config.get<string>('DATABASE_URL');
+        if (!url) {
+          throw new Error('DATABASE_URL is not configured');
+        }
+        return {
+          type: 'postgres' as const,
+          url,
+          entities: [Store, FavoriteStore, Vendor, Subscription, LeadCredit],
+          synchronize: false,
+          ssl: false,
+          logging: ['error', 'warn'],
+        };
+      },
+    }),
+  ],
+})
+export class DbModule {}
+```
+
+src/infra/redis.module.ts
+```ts
+import { Inject, Module, OnModuleDestroy } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import Redis from 'ioredis';
+
+export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
+
+@Module({
+  imports: [ConfigModule],
+  providers: [
+    {
+      provide: REDIS_CLIENT,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL');
+        if (!redisUrl) {
+          throw new Error('REDIS_URL is not configured');
+        }
+        return new Redis(redisUrl);
+      },
+    },
+  ],
+  exports: [REDIS_CLIENT],
+})
+export class RedisModule implements OnModuleDestroy {
+  constructor(@Inject(REDIS_CLIENT) private readonly client: Redis) {}
+
+  async onModuleDestroy() {
+    await this.client.quit();
+  }
+}
+```
+
+src/infra/swagger.ts
+```ts
+import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+
+export const setupSwagger = (app: INestApplication) => {
+  const configService = app.get(ConfigService);
+  const appName = configService.get<string>('PROJECT_NAME') ?? 'rayhawk-backend';
+
+  const config = new DocumentBuilder()
+    .setTitle(appName)
+    .setDescription('Rayhawk REST API')
+    .setVersion('1.0.0')
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Supabase-issued JWT',
+      },
+      'bearer',
+    )
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('v1/docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  });
+};
+```
+
+src/main.ts
+```ts
+import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { NestFactory } from '@nestjs/core';
+import { json } from 'body-parser';
+import { AppModule } from './app.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { setupSwagger } from './infra/swagger';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const logger = new Logger('Bootstrap');
+  const configService = app.get(ConfigService);
+
+  app.enableCors();
+  app.setGlobalPrefix('v1');
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
+  app.useGlobalFilters(new HttpExceptionFilter());
+  app.useGlobalInterceptors(new LoggingInterceptor());
+
+  // Ensure raw body is preserved for Stripe webhooks while still parsing JSON elsewhere.
+  app.use(
+    '/v1/webhooks/stripe',
+    json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+      limit: '1mb',
+      type: '*/*',
+    }),
+  );
+
+  setupSwagger(app);
+
+  const port = configService.get<number>('APP_PORT') ?? 8080;
+  await app.listen(port);
+  logger.log(`API running on http://localhost:${port}`);
+}
+
+bootstrap();
+```
+
+src/modules/billing/billing.controller.ts
+```ts
+import { BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import Stripe from 'stripe';
+import { User } from '../../common/decorators/user.decorator';
+import { SupabaseAuthGuard, SupabaseUser } from '../../common/guards/supabase-auth.guard';
+import { CheckoutDto, CheckoutMode } from './dto/checkout.dto';
+
+@ApiTags('Billing')
+@ApiBearerAuth()
+@Controller('billing')
+@UseGuards(SupabaseAuthGuard)
+export class BillingController {
+  private readonly stripe?: Stripe;
+  private readonly appUrl: string;
+
+  constructor(private readonly config: ConfigService) {
+    const secret = config.get<string>('STRIPE_SECRET_KEY');
+    this.appUrl = config.get<string>('APP_URL') ?? 'http://localhost:8080';
+    if (secret) {
+      this.stripe = new Stripe(secret, { apiVersion: '2024-06-20' });
+    }
+  }
+
+  @Post('checkout')
+  async checkout(@Body() dto: CheckoutDto, @User() user: SupabaseUser) {
+    if (!this.stripe) {
+      return { url: `${this.appUrl}/billing/configure-stripe` };
+    }
+
+    if (dto.mode === CheckoutMode.Subscription && !dto.priceId) {
+      throw new BadRequestException('priceId is required for subscription mode');
+    }
+
+    if (dto.mode === CheckoutMode.Payment && !dto.amount) {
+      throw new BadRequestException('amount is required for payment mode');
+    }
+
+    const session = await this.stripe.checkout.sessions.create({
+      mode: dto.mode,
+      success_url: `${this.appUrl}/billing/success`,
+      cancel_url: `${this.appUrl}/billing/cancel`,
+      line_items:
+        dto.mode === CheckoutMode.Subscription
+          ? [
+              {
+                price: dto.priceId,
+                quantity: 1,
+              },
+            ]
+          : [
+              {
+                price_data: {
+                  currency: 'usd',
+                  unit_amount: Math.round((dto.amount ?? 0) * 100),
+                  product_data: {
+                    name: 'One-time charge',
+                  },
+                },
+                quantity: 1,
+              },
+            ],
+      metadata: {
+        vendorId: dto.vendorId ?? '',
+        accountId: user.id,
+      },
+    });
+
+    return { url: session.url };
+  }
+}
+```
+
+src/modules/billing/billing.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import { BillingController } from './billing.controller';
+
+@Module({
+  imports: [ConfigModule],
+  controllers: [BillingController],
+  providers: [SupabaseAuthGuard],
+})
+export class BillingModule {}
+```
+
+src/modules/billing/dto/checkout.dto.ts
+```ts
+import { IsEnum, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID } from 'class-validator';
+
+export enum CheckoutMode {
+  Subscription = 'subscription',
+  Payment = 'payment',
+}
+
+export class CheckoutDto {
+  @IsEnum(CheckoutMode)
+  mode!: CheckoutMode;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  priceId?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  amount?: number;
+
+  @IsOptional()
+  @IsUUID()
+  vendorId?: string;
+}
+```
+
+src/modules/favorites/favorites.controller.ts
+```ts
+import { Controller, Delete, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { SupabaseAuthGuard, SupabaseUser } from '../../common/guards/supabase-auth.guard';
+import { User } from '../../common/decorators/user.decorator';
+import { FavoritesService } from './favorites.service';
+
+@ApiTags('Favorites')
+@ApiBearerAuth()
+@Controller('favorites')
+@UseGuards(SupabaseAuthGuard)
+export class FavoritesController {
+  constructor(private readonly favoritesService: FavoritesService) {}
+
+  @Get('me')
+  getMyFavorites(@User() user: SupabaseUser) {
+    return this.favoritesService.getMine(user.id);
+  }
+
+  @Post(':storeId')
+  addFavorite(@User() user: SupabaseUser, @Param('storeId', new ParseUUIDPipe()) storeId: string) {
+    return this.favoritesService.add(user.id, storeId);
+  }
+
+  @Delete(':storeId')
+  removeFavorite(@User() user: SupabaseUser, @Param('storeId', new ParseUUIDPipe()) storeId: string) {
+    return this.favoritesService.remove(user.id, storeId);
+  }
+}
+```
+
+src/modules/favorites/favorites.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import { FavoriteStore, Store } from '../../entities';
+import { FavoritesController } from './favorites.controller';
+import { FavoritesService } from './favorites.service';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([FavoriteStore, Store])],
+  controllers: [FavoritesController],
+  providers: [FavoritesService, SupabaseAuthGuard],
+})
+export class FavoritesModule {}
+```
+
+src/modules/favorites/favorites.service.ts
+```ts
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { FavoriteStore, Store } from '../../entities';
+
+@Injectable()
+export class FavoritesService {
+  constructor(
+    @InjectRepository(FavoriteStore)
+    private readonly favoritesRepository: Repository<FavoriteStore>,
+    @InjectRepository(Store)
+    private readonly storesRepository: Repository<Store>,
+  ) {}
+
+  async getMine(accountId: string) {
+    return this.storesRepository
+      .createQueryBuilder('store')
+      .innerJoin('store.favorites', 'favorite', 'favorite.accountId = :accountId', { accountId })
+      .where('store.status = :status', { status: 'active' })
+      .getMany();
+  }
+
+  async add(accountId: string, storeId: string) {
+    const store = await this.storesRepository.findOne({ where: { id: storeId } });
+    if (!store) {
+      throw new NotFoundException('Store not found');
+    }
+    await this.favoritesRepository.save({ accountId, storeId });
+    return store;
+  }
+
+  async remove(accountId: string, storeId: string) {
+    await this.favoritesRepository.delete({ accountId, storeId });
+    return { removed: true };
+  }
+}
+```
+
+src/modules/health/health.controller.ts
+```ts
+import { Controller, Get } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { version } from '../../../package.json';
+
+@ApiTags('Health')
+@Controller('health')
+export class HealthController {
+  @Get()
+  getHealth() {
+    return {
+      ok: true,
+      uptime: process.uptime(),
+      version,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}
+```
+
+src/modules/health/health.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { HealthController } from './health.controller';
+
+@Module({
+  controllers: [HealthController],
+})
+export class HealthModule {}
+```
+
+src/modules/jobs/jobs.controller.ts
+```ts
+import { Body, Controller, Headers, Post, UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ApiHeader, ApiTags } from '@nestjs/swagger';
+import { JobsService } from './jobs.service';
+
+@ApiTags('Jobs')
+@Controller('cron')
+export class JobsController {
+  constructor(private readonly jobsService: JobsService, private readonly config: ConfigService) {}
+
+  @Post('enqueue-daily')
+  @ApiHeader({ name: 'x-internal-token', required: true, description: 'Shared secret for pg_cron' })
+  async enqueueDaily(@Headers('x-internal-token') rawToken: string | string[], @Body('accountId') accountId?: string) {
+    const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
+    const expected = this.config.get<string>('INTERNAL_JOBS_TOKEN');
+    if (!expected || token !== expected) {
+      throw new UnauthorizedException('Invalid internal token');
+    }
+    await this.jobsService.enqueueDailySummary(accountId);
+    return { enqueued: true };
+  }
+}
+```
+
+src/modules/jobs/jobs.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { ReportsModule } from '../reports/reports.module';
+import { JobsController } from './jobs.controller';
+import { JobsService } from './jobs.service';
+
+@Module({
+  imports: [ConfigModule, ReportsModule],
+  controllers: [JobsController],
+  providers: [JobsService],
+})
+export class JobsModule {}
+```
+
+src/modules/jobs/jobs.service.ts
+```ts
+import { Inject, Injectable } from '@nestjs/common';
+import { Queue } from 'bullmq';
+import { REPORTS_QUEUE } from '../../infra/bullmq.module';
+import { ReportsService } from '../reports/reports.service';
+
+@Injectable()
+export class JobsService {
+  constructor(
+    @Inject(REPORTS_QUEUE) private readonly reportsQueue: Queue,
+    private readonly reportsService: ReportsService,
+  ) {}
+
+  async enqueueDailySummary(accountId?: string) {
+    const summary = await this.reportsService.dailySummary(accountId);
+    return this.reportsQueue.add(
+      'daily-summary',
+      { accountId: accountId ?? null, summary },
+      { removeOnComplete: true, removeOnFail: true },
+    );
+  }
+}
+```
+
+src/modules/reports/reports.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Store } from '../../entities';
+import { ReportsService } from './reports.service';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Store])],
+  providers: [ReportsService],
+  exports: [ReportsService],
+})
+export class ReportsModule {}
+```
+
+src/modules/reports/reports.service.ts
+```ts
+import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Store } from '../../entities';
+
+@Injectable()
+export class ReportsService {
+  constructor(
+    @InjectRepository(Store)
+    private readonly storesRepository: Repository<Store>,
+  ) {}
+
+  async dailySummary(accountId?: string) {
+    const storeCount = await this.storesRepository.count({ where: { status: 'active' } });
+    return {
+      scope: accountId ?? 'global',
+      storeCount,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+}
+```
+
+src/modules/stores/dto/create-store.dto.ts
+```ts
+import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+
+export class CreateStoreDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  slug!: string;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+}
+```
+
+src/modules/stores/stores.controller.ts
+```ts
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import { User } from '../../common/decorators/user.decorator';
+import { SupabaseUser } from '../../common/guards/supabase-auth.guard';
+import { CreateStoreDto } from './dto/create-store.dto';
+import { StoresService } from './stores.service';
+
+@ApiTags('Stores')
+@Controller('stores')
+export class StoresController {
+  constructor(private readonly storesService: StoresService) {}
+
+  @Get()
+  getStores() {
+    return this.storesService.findAll();
+  }
+
+  @Get(':id')
+  getStore(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.storesService.findOne(id);
+  }
+
+  @Post()
+  @ApiBearerAuth()
+  @UseGuards(SupabaseAuthGuard)
+  createStore(@Body() dto: CreateStoreDto, @User() user: SupabaseUser) {
+    return this.storesService.create(dto, user.id);
+  }
+}
+```
+
+src/modules/stores/stores.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { SupabaseAuthGuard } from '../../common/guards/supabase-auth.guard';
+import { Store } from '../../entities';
+import { StoresController } from './stores.controller';
+import { StoresService } from './stores.service';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Store])],
+  controllers: [StoresController],
+  providers: [StoresService, SupabaseAuthGuard],
+  exports: [StoresService],
+})
+export class StoresModule {}
+```
+
+src/modules/stores/stores.service.ts
+```ts
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Store } from '../../entities';
+import { CreateStoreDto } from './dto/create-store.dto';
+
+@Injectable()
+export class StoresService {
+  constructor(
+    @InjectRepository(Store)
+    private readonly storesRepository: Repository<Store>,
+  ) {}
+
+  findAll() {
+    return this.storesRepository.find({ where: { status: 'active' } });
+  }
+
+  async findOne(id: string) {
+    const store = await this.storesRepository.findOne({ where: { id } });
+    if (!store) {
+      throw new NotFoundException('Store not found');
+    }
+    return store;
+  }
+
+  create(dto: CreateStoreDto, vendorAccount: string) {
+    const store = this.storesRepository.create({
+      ...dto,
+      vendorAccount,
+    });
+    return this.storesRepository.save(store);
+  }
+}
+```
+
+src/modules/webhooks/stripe.webhook.controller.ts
+```ts
+import { BadRequestException, Controller, Headers, Post, RawBodyRequest, Req } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Request } from 'express';
+import { Repository } from 'typeorm';
+import Stripe from 'stripe';
+import { LeadCredit, Subscription } from '../../entities';
+
+@ApiTags('Webhooks')
+@Controller('webhooks')
+export class StripeWebhookController {
+  private readonly stripe?: Stripe;
+
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(Subscription)
+    private readonly subscriptionsRepository: Repository<Subscription>,
+    @InjectRepository(LeadCredit)
+    private readonly leadCreditsRepository: Repository<LeadCredit>,
+  ) {
+    const secret = config.get<string>('STRIPE_SECRET_KEY');
+    if (secret) {
+      this.stripe = new Stripe(secret, { apiVersion: '2024-06-20' });
+    }
+  }
+
+  @Post('stripe')
+  async handleStripe(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('stripe-signature') signature: string | string[],
+  ) {
+    const webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET');
+    if (!this.stripe || !webhookSecret) {
+      return { received: true };
+    }
+
+    const resolvedSignature = Array.isArray(signature) ? signature[0] : signature;
+    if (!resolvedSignature) {
+      throw new BadRequestException('Missing Stripe signature header');
+    }
+
+    const rawBody = req.rawBody;
+    const event = this.stripe.webhooks.constructEvent(rawBody, resolvedSignature, webhookSecret);
+
+    switch (event.type) {
+      case 'checkout.session.completed':
+        await this.handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+        break;
+      case 'customer.subscription.updated':
+      case 'customer.subscription.deleted':
+        await this.syncSubscription(event.data.object as Stripe.Subscription);
+        break;
+      default:
+        break;
+    }
+
+    return { received: true };
+  }
+
+  private async handleCheckoutCompleted(session: Stripe.Checkout.Session) {
+    if (session.mode === 'subscription' && session.subscription) {
+      await this.syncSubscription(session.subscription as Stripe.Subscription | string, session);
+    } else if (session.mode === 'payment') {
+      const credits = Number(session.metadata?.credits ?? 10);
+      const accountId = session.metadata?.accountId;
+      if (accountId) {
+        await this.creditLeadAccount(accountId, credits);
+      }
+    }
+  }
+
+  private async syncSubscription(subscription: Stripe.Subscription | string, session?: Stripe.Checkout.Session) {
+    if (!this.stripe) {
+      return;
+    }
+    const record =
+      typeof subscription === 'string' ? await this.stripe.subscriptions.retrieve(subscription) : subscription;
+
+    const vendorId = record.metadata?.vendorId ?? session?.metadata?.vendorId;
+    if (!vendorId) {
+      return;
+    }
+
+    await this.subscriptionsRepository.upsert(
+      {
+        vendorId,
+        stripeCustomerId: (record.customer as string) ?? session?.customer?.toString(),
+        stripeSubscriptionId: record.id,
+        status: record.status,
+        currentPeriodEnd: record.current_period_end
+          ? new Date(record.current_period_end * 1000)
+          : undefined,
+      },
+      {
+        conflictPaths: ['stripeSubscriptionId'],
+      },
+    );
+  }
+
+  private async creditLeadAccount(accountId: string, credits: number) {
+    await this.leadCreditsRepository.query(
+      `INSERT INTO core.lead_credits(account_id, credits, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (account_id) DO UPDATE
+       SET credits = core.lead_credits.credits + EXCLUDED.credits,
+           updated_at = now()`,
+      [accountId, credits],
+    );
+  }
+}
+```
+
+src/modules/webhooks/webhooks.module.ts
+```ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { LeadCredit, Subscription } from '../../entities';
+import { StripeWebhookController } from './stripe.webhook.controller';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Subscription, LeadCredit])],
+  controllers: [StripeWebhookController],
+})
+export class WebhooksModule {}
+```
+
+tsconfig.build.json
+```json
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "sourceMap": false
+  },
+  "exclude": ["node_modules", "test", "dist", "*.spec.ts"]
+}
+```
+
+tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2021",
+    "sourceMap": true,
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "incremental": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
+```
