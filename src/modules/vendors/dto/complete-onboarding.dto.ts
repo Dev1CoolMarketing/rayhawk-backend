@@ -1,4 +1,5 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { VendorPlanKey, VENDOR_PLAN_KEYS } from '../../billing/constants/vendor-plans';
 
 export class CompleteOnboardingDto {
   @IsString()
@@ -16,4 +17,8 @@ export class CompleteOnboardingDto {
   @IsString()
   @IsOptional()
   vendorDescription?: string;
+
+  @IsOptional()
+  @IsIn(VENDOR_PLAN_KEYS)
+  planKey?: VendorPlanKey;
 }

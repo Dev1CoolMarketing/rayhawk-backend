@@ -12,6 +12,8 @@ import { LoginUserDto } from './dto/login-user.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { RequestUser } from './types/request-user.interface';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -43,7 +45,7 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   async login(@Body() dto: LoginUserDto, @Req() req: Request & { user: UserEntity }): Promise<TokenResponseDto> {
-    return this.authService.login(req.user, dto.audience);
+    return this.authService.login(req.user, dto.audience, dto.birthYear);
   }
 
   /**
@@ -81,5 +83,25 @@ export class AuthController {
   @Post('logout')
   async logout(@CurrentUser() user: RequestUser, @Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto.refreshToken, user.id);
+  }
+
+  /**
+   * POST /auth/password/forgot
+   * Body: { email }
+   * Response: { success: true } and a reset token (for development) if the account exists.
+   */
+  @Post('password/forgot')
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  /**
+   * POST /auth/password/reset
+   * Body: { token, password }
+   * Response: { success: true }
+   */
+  @Post('password/reset')
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.password);
   }
 }

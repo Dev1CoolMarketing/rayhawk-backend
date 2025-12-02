@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength } from 'class-validator';
 
 export class CreateProductDto {
   @ApiProperty({ example: 'Premium Featured Listing' })
@@ -27,4 +27,16 @@ export class CreateProductDto {
   @IsString()
   @IsOptional()
   linkUrl?: string;
+
+  @ApiProperty({
+    example: ['injections', 'transdermal'],
+    required: false,
+    isArray: true,
+    type: String,
+    description: 'Category keys; must match an existing product category.',
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  categories?: string[];
 }

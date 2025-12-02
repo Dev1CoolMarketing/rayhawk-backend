@@ -6,6 +6,7 @@ import { CreateStoreDto } from './dto/create-store.dto';
 import { MediaService } from '../media/media.service';
 import { LinkImageDto } from '../../common/dto/link-image.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
+import { BillingService } from '../billing/billing.service';
 
 @Injectable()
 export class StoresService {
@@ -14,6 +15,7 @@ export class StoresService {
     @InjectRepository(Product) private readonly productsRepository: Repository<Product>,
     @InjectRepository(Vendor) private readonly vendorsRepository: Repository<Vendor>,
     private readonly media: MediaService,
+    private readonly billingService: BillingService,
   ) {}
 
   findActive() {
@@ -29,7 +31,22 @@ export class StoresService {
     if (!vendor) {
       return [];
     }
-    return this.storesRepository.find({ where: { vendorId: vendor.id, deletedAt: IsNull() } });
+    const stores = await this.storesRepository.find({
+      where: { vendorId: vendor.id, deletedAt: IsNull() },
+      order: { createdAt: 'ASC' },
+    });
+
+    const entitlements = await this.billingService.getVendorEntitlements(vendor.id);
+    if (entitlements && entitlements.storesAllowed !== null) {
+      if (!entitlements.isActive && entitlements.storesAllowed === 0) {
+        return [];
+      }
+      if (entitlements.storesAllowed >= 0 && stores.length > entitlements.storesAllowed) {
+        return stores.slice(0, entitlements.storesAllowed);
+      }
+    }
+
+    return stores;
   }
 
   async findOne(id: string) {
@@ -42,11 +59,28 @@ export class StoresService {
 
   async create(dto: CreateStoreDto, ownerId: string) {
     const vendor = await this.requireVendor(ownerId);
+
+    const entitlements = await this.billingService.getVendorEntitlements(vendor.id);
+    if (entitlements) {
+      if (!entitlements.isActive) {
+        throw new ForbiddenException('Billing subscription is not active');
+      }
+      if (entitlements.storesAllowed !== null) {
+        const storeCount = await this.storesRepository.count({
+          where: { vendorId: vendor.id, deletedAt: IsNull(), status: 'active' },
+        });
+        if (storeCount >= entitlements.storesAllowed) {
+          throw new ForbiddenException('Store limit reached for current plan');
+        }
+      }
+    }
+
     const store = this.storesRepository.create({
       ...dto,
       vendorId: vendor.id,
       openingHours: dto.openingHours ?? null,
       description: dto.description ?? null,
+      phoneNumber: dto.phoneNumber?.trim() ? dto.phoneNumber.trim() : null,
     });
     try {
       return await this.storesRepository.save(store);
@@ -82,11 +116,29 @@ export class StoresService {
       store.postalCode = dto.postalCode;
     }
     if (dto.status !== undefined) {
+      // Only allow activation if under limit and plan active
+      if (dto.status === 'active') {
+        const entitlements = await this.billingService.getVendorEntitlements(store.vendorId);
+        if (!entitlements || !entitlements.isActive) {
+          throw new ForbiddenException('Cannot activate store: plan inactive or store limit reached');
+        }
+        if (entitlements.storesAllowed !== null && entitlements.storesAllowed >= 0) {
+          const activeCount = await this.storesRepository.count({
+            where: { vendorId: store.vendorId, deletedAt: IsNull(), status: 'active' },
+          });
+          if ((entitlements.storesAllowed ?? 0) <= activeCount) {
+            throw new ForbiddenException('Cannot activate store: plan inactive or store limit reached');
+          }
+        }
+      }
       store.status = dto.status;
     }
     if (dto.openingHours !== undefined) {
       const normalized = dto.openingHours.map((line) => line.trim()).filter((line) => line.length > 0);
       store.openingHours = normalized.length ? normalized : null;
+    }
+    if (dto.phoneNumber !== undefined) {
+      store.phoneNumber = dto.phoneNumber.trim().length ? dto.phoneNumber.trim() : null;
     }
     try {
       return await this.storesRepository.save(store);
@@ -136,6 +188,10 @@ export class StoresService {
     }
     if (vendor.status !== 'active') {
       throw new ForbiddenException('Vendor account is not active');
+    }
+    const entitlements = await this.billingService.getVendorEntitlements(vendor.id);
+    if (!entitlements?.isActive || (entitlements.storesAllowed !== null && entitlements.storesAllowed <= 0)) {
+      throw new ForbiddenException('Store creation and activation are blocked: plan inactive or limit reached');
     }
     return vendor;
   }

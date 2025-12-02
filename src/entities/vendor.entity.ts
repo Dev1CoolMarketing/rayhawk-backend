@@ -22,6 +22,9 @@ export class Vendor {
   @Column({ type: 'text', default: 'inactive' })
   status!: string;
 
+  @Column({ name: 'phone_number', type: 'text', nullable: true })
+  phoneNumber?: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

@@ -38,7 +38,10 @@ describe('UsersService', () => {
 
     const result = await service.findByEmail('test@example.com');
 
-    expect(repo.findOne).toHaveBeenCalledWith({ where: { email: 'test@example.com' } });
+    expect(repo.findOne).toHaveBeenCalledWith({
+      where: { email: 'test@example.com' },
+      relations: ['customerProfile'],
+    });
     expect(result).toEqual(user);
   });
 

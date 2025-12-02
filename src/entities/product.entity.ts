@@ -4,11 +4,14 @@ import {
   DeleteDateColumn,
   Entity,
   JoinColumn,
+  JoinTable,
   ManyToOne,
+  ManyToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Store } from './store.entity';
+import { ProductCategory } from './product-category.entity';
 
 @Entity({ name: 'products', schema: 'core' })
 export class Product {
@@ -42,6 +45,14 @@ export class Product {
 
   @Column({ name: 'link_url', type: 'text', nullable: true })
   linkUrl?: string | null;
+
+  @ManyToMany(() => ProductCategory, (category) => category.products, { eager: true })
+  @JoinTable({
+    name: 'product_category_links',
+    joinColumn: { name: 'product_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'category_id', referencedColumnName: 'id' },
+  })
+  categories?: ProductCategory[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

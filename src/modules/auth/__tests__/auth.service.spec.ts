@@ -5,8 +5,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
-import { RefreshToken, User } from '../../../entities';
+import { RefreshToken, User, Vendor } from '../../../entities';
 import { UsersService } from '../../users/users.service';
+import { CustomersService } from '../../customers/customers.service';
 import { AuthService } from '../auth.service';
 
 jest.mock('bcrypt', () => ({
@@ -83,6 +84,18 @@ describe('AuthService', () => {
             save: jest.fn(),
             findOne: jest.fn(),
             delete: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(Vendor),
+          useValue: {
+            findOne: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: CustomersService,
+          useValue: {
+            createProfile: jest.fn(),
           },
         },
       ],
