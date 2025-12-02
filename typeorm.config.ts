@@ -6,7 +6,7 @@ loadEnv();
 
 const isRunningTs = extname(__filename) === '.ts';
 const entitiesGlob = isRunningTs ? ['src/**/*.entity.ts'] : ['dist/**/*.entity.js'];
-const migrationsGlob = isRunningTs ? ['src/migrations/*.ts'] : ['dist/src/migrations/*.js'];
+const migrationsGlob = isRunningTs ? ['src/migrations/*.ts'] : ['dist/migrations/*.js'];
 
 const options: DataSourceOptions = {
   type: 'postgres',

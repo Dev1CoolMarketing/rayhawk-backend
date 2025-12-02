@@ -4,9 +4,10 @@ import { Store, Vendor, Product } from '../../entities';
 import { StoresController } from './stores.controller';
 import { StoresService } from './stores.service';
 import { MediaModule } from '../media/media.module';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Store, Vendor, Product]), MediaModule],
+  imports: [TypeOrmModule.forFeature([Store, Vendor, Product]), MediaModule, BillingModule],
   controllers: [StoresController],
   providers: [StoresService],
   exports: [StoresService],

@@ -36,6 +36,14 @@ export class UsersService {
     return updated;
   }
 
+  async updatePassword(userId: string, passwordHash: string, tokenVersion?: number): Promise<void> {
+    const updatePayload: Partial<User> = { passwordHash };
+    if (typeof tokenVersion === 'number') {
+      updatePayload.tokenVersion = tokenVersion;
+    }
+    await this.usersRepo.update({ id: userId }, updatePayload);
+  }
+
   async deleteById(id: string): Promise<void> {
     await this.usersRepo.delete({ id });
   }

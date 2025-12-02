@@ -61,7 +61,22 @@ export class AuthService {
     return this.issueTokens(hydrated);
   }
 
-  async login(user: User, audience?: AuthAudience): Promise<TokenResponseDto> {
+  async login(user: User, audience?: AuthAudience, birthYear?: number | null): Promise<TokenResponseDto> {
+    // If logging in as a customer and profile is missing, allow creation when birthYear is supplied.
+    if (audience === 'customer') {
+      if (!user.customerProfile) {
+        if (!birthYear) {
+          throw new CustomerProfileRequiredException();
+        }
+        await this.customersService.createProfile(user.id, birthYear);
+        // Refresh user to include the created profile
+        const hydrated = await this.usersService.findById(user.id);
+        if (!hydrated) {
+          throw new NotFoundException('User not found after creating customer profile');
+        }
+        user = hydrated;
+      }
+    }
     return this.issueTokens(user, { requestedRole: audience ?? null });
   }
 
@@ -126,6 +141,58 @@ export class AuthService {
       storedToken.revokedAt = new Date();
       await this.refreshTokenRepo.save(storedToken);
     }
+
+    return { success: true };
+  }
+
+  async requestPasswordReset(email: string): Promise<{ success: true; token?: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(normalizedEmail);
+    if (!user) {
+      // Do not leak existence; respond success.
+      return { success: true };
+    }
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      tv: user.tokenVersion,
+      type: 'password_reset',
+    };
+
+    const token = await this.jwt.signAsync(payload, {
+      secret: this.getAccessTokenSecret(),
+      expiresIn: this.getResetTokenTtlSeconds(),
+    });
+
+    // In production, send via email; return token here for development/testing.
+    return { success: true, token };
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<{ success: true }> {
+    let payload: { sub: string; tv: number; type?: string };
+    try {
+      payload = await this.jwt.verifyAsync(token, {
+        secret: this.getAccessTokenSecret(),
+      });
+    } catch (error) {
+      throw new UnauthorizedException('Invalid or expired reset token');
+    }
+
+    if (payload.type !== 'password_reset') {
+      throw new UnauthorizedException('Invalid reset token');
+    }
+
+    const user = await this.usersService.findById(payload.sub);
+    if (!user || user.tokenVersion !== payload.tv) {
+      throw new UnauthorizedException('Invalid reset token');
+    }
+
+    const passwordHash = await hash(newPassword, this.saltRounds);
+    // Invalidate existing sessions by bumping token version
+    const nextTokenVersion = user.tokenVersion + 1;
+    await this.usersService.updatePassword(user.id, passwordHash, nextTokenVersion);
+    await this.cleanupExpiredTokens(user.id);
 
     return { success: true };
   }
@@ -261,6 +328,10 @@ export class AuthService {
 
   private getRefreshTokenTtlSeconds(): number {
     return this.parseDurationSeconds(this.config.get<string>('JWT_REFRESH_TOKEN_TTL_SECONDS'), 60 * 60 * 24 * 14);
+  }
+
+  private getResetTokenTtlSeconds(): number {
+    return this.parseDurationSeconds(this.config.get<string>('PASSWORD_RESET_TOKEN_TTL_SECONDS'), 15 * 60);
   }
 
   private parseDurationSeconds(value: string | undefined, fallback: number): number {

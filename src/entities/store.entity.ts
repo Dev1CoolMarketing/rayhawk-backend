@@ -13,6 +13,7 @@ import {
 import { FavoriteStore } from './favorite-store.entity';
 import { Product } from './product.entity';
 import { Vendor } from './vendor.entity';
+import { Review } from './review.entity';
 
 @Entity({ name: 'stores', schema: 'core' })
 export class Store {
@@ -54,6 +55,9 @@ export class Store {
   @Column({ name: 'postal_code', type: 'text' })
   postalCode!: string;
 
+  @Column({ name: 'phone_number', type: 'text', nullable: true })
+  phoneNumber?: string | null;
+
   @Column({ name: 'image_url', type: 'text', nullable: true })
   imageUrl?: string | null;
 
@@ -77,4 +81,7 @@ export class Store {
 
   @OneToMany(() => Product, (product) => product.store)
   products?: Product[];
+
+  @OneToMany(() => Review, (review) => review.store)
+  reviews?: Review[];
 }
