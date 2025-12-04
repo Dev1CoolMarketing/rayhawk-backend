@@ -9,6 +9,7 @@ import {
   BillingSubscriptionItem,
   BillingWebhookEvent,
   Vendor,
+  User,
 } from '../../entities';
 import { BillingController } from './billing.controller';
 import { BillingService } from './billing.service';
@@ -24,6 +25,7 @@ import { BillingService } from './billing.service';
       BillingInvoice,
       BillingWebhookEvent,
       Vendor,
+      User,
     ]),
   ],
   controllers: [BillingController],
