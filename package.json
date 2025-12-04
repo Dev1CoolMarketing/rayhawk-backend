@@ -18,7 +18,8 @@
     "docker:logs": "docker compose logs -f api",
     "migrations:run": "typeorm-ts-node-commonjs migration:run -d typeorm.config.ts",
     "migrations:revert": "typeorm-ts-node-commonjs migration:revert -d typeorm.config.ts",
-    "migrations:generate": "typeorm-ts-node-commonjs migration:generate src/migrations/$npm_config_name -d typeorm.config.ts"
+    "migrations:generate": "typeorm-ts-node-commonjs migration:generate src/migrations/$npm_config_name -d typeorm.config.ts",
+    "backfill:coords": "ts-node scripts/backfillCoordinates.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.2",

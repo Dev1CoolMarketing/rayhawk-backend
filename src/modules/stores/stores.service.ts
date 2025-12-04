@@ -81,6 +81,8 @@ export class StoresService {
       openingHours: dto.openingHours ?? null,
       description: dto.description ?? null,
       phoneNumber: dto.phoneNumber?.trim() ? dto.phoneNumber.trim() : null,
+      latitude: dto.latitude ?? null,
+      longitude: dto.longitude ?? null,
     });
     try {
       return await this.storesRepository.save(store);
@@ -139,6 +141,12 @@ export class StoresService {
     }
     if (dto.phoneNumber !== undefined) {
       store.phoneNumber = dto.phoneNumber.trim().length ? dto.phoneNumber.trim() : null;
+    }
+    if (dto.latitude !== undefined) {
+      store.latitude = dto.latitude ?? null;
+    }
+    if (dto.longitude !== undefined) {
+      store.longitude = dto.longitude ?? null;
     }
     try {
       return await this.storesRepository.save(store);

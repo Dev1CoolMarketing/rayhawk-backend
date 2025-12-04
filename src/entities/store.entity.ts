@@ -67,6 +67,23 @@ export class Store {
   @Column({ name: 'opening_hours', type: 'jsonb', nullable: true })
   openingHours?: string[] | null;
 
+  @Column({ type: 'double precision', nullable: true })
+  latitude?: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  longitude?: number | null;
+
+  @Column({
+    type: 'geography',
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    nullable: true,
+    asExpression:
+      "CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography END",
+    generatedType: 'STORED',
+  })
+  coordinates?: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

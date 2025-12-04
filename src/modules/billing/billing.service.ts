@@ -9,6 +9,8 @@ import {
   BillingSubscription,
   BillingSubscriptionItem,
   BillingWebhookEvent,
+  User,
+  Vendor,
 } from '../../entities';
 import { BillingPlanSummary, BillingEntitlements, BillingSubscriptionStatus } from './types/billing.types';
 import {
@@ -63,6 +65,10 @@ export class BillingService {
     private readonly invoicesRepo: Repository<BillingInvoice>,
     @InjectRepository(BillingWebhookEvent)
     private readonly eventsRepo: Repository<BillingWebhookEvent>,
+    @InjectRepository(Vendor)
+    private readonly vendorsRepo: Repository<Vendor>,
+    @InjectRepository(User)
+    private readonly usersRepo: Repository<User>,
   ) {}
 
   async updateStoreQuantity(stripe: Stripe, params: { vendorId: string; quantity: number; priceId?: string }) {
@@ -421,6 +427,32 @@ export class BillingService {
   }
 
   async getVendorEntitlements(vendorId: string): Promise<BillingEntitlements | null> {
+    const unlimitedEmails = (this.config.get<string>('ADMIN_UNLIMITED_OWNER_EMAILS') ?? '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (unlimitedEmails.length) {
+      const vendor = await this.vendorsRepo.findOne({ where: { id: vendorId } });
+      if (vendor) {
+        const owner = await this.usersRepo.findOne({ where: { id: vendor.ownerId } });
+        const ownerEmail = owner?.email?.toLowerCase().trim();
+        if (ownerEmail && unlimitedEmails.includes(ownerEmail)) {
+          return {
+            planKey: 'admin-override',
+            status: 'active',
+            currentPeriodEnd: null,
+            isActive: true,
+            seatsAllowed: null,
+            storesAllowed: null, // unlimited stores
+            productsPerStoreAllowed: null, // unlimited products
+            seatsAddOns: 0,
+            storesAddOns: 0,
+          };
+        }
+      }
+    }
+
     const subscription = await this.subscriptionsRepo.findOne({
       where: { vendorId },
       relations: ['plan'],
