@@ -34,6 +34,28 @@ export class Product {
   @Column({ name: 'price_cents', type: 'integer' })
   priceCents!: number;
 
+  @Column({ name: 'unit_count', type: 'integer', nullable: true })
+  unitCount?: number | null;
+
+  @Column({ name: 'unit_count_type', type: 'text', nullable: true })
+  unitCountType?: string | null;
+
+  @Column({ name: 'form_factor', type: 'text', nullable: true })
+  formFactor?: string | null;
+
+  @Column({
+    name: 'billing_type',
+    type: 'text',
+    default: 'one_time',
+  })
+  billingType!: 'one_time' | 'recurring';
+
+  @Column({ name: 'billing_interval', type: 'text', nullable: true })
+  billingInterval?: 'month' | 'year' | null;
+
+  @Column({ name: 'billing_quantity', type: 'integer', default: 1 })
+  billingQuantity!: number;
+
   @Column({ type: 'text', default: 'active' })
   status!: string;
 
@@ -45,6 +67,12 @@ export class Product {
 
   @Column({ name: 'link_url', type: 'text', nullable: true })
   linkUrl?: string | null;
+
+  @Column({ name: 'bullet_points', type: 'text', array: true, nullable: true })
+  bulletPoints?: string[] | null;
+
+  @Column({ name: 'featured', type: 'boolean', default: false })
+  featured!: boolean;
 
   @ManyToMany(() => ProductCategory, (category) => category.products, { eager: true })
   @JoinTable({

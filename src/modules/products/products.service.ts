@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, IsNull, Repository } from 'typeorm';
 import { Product, ProductCategory, Store } from '../../entities';
@@ -21,7 +21,7 @@ export class ProductsService {
   findByStore(storeId: string) {
     return this.productsRepository.find({
       where: { storeId, status: 'active', deletedAt: IsNull() },
-      order: { createdAt: 'DESC' },
+      order: { featured: 'DESC', createdAt: 'DESC' },
       relations: ['categories'],
     });
   }
@@ -70,13 +70,22 @@ export class ProductsService {
     }
 
     const categories = dto.categories?.length ? await this.resolveCategories(dto.categories) : [];
+    const billing = this.computeBilling(dto.billingType, dto.billingInterval, dto.billingQuantity);
 
     const product = this.productsRepository.create({
       ...dto,
       status: dto.status ?? 'active',
       linkUrl: dto.linkUrl ?? null,
+      bulletPoints: dto.bulletPoints?.filter((b) => b && b.trim().length > 0) ?? null,
+      featured: dto.featured ?? false,
       storeId,
       categories,
+      unitCount: dto.unitCount ?? null,
+      unitCountType: dto.unitCountType ?? null,
+      formFactor: dto.formFactor ?? null,
+      billingType: billing.billingType,
+      billingInterval: billing.billingInterval,
+      billingQuantity: billing.billingQuantity,
     });
     return this.productsRepository.save(product);
   }
@@ -143,6 +152,27 @@ export class ProductsService {
     if (dto.linkUrl !== undefined) {
       product.linkUrl = dto.linkUrl ?? null;
     }
+    if (dto.bulletPoints !== undefined) {
+      product.bulletPoints = dto.bulletPoints?.filter((b) => b && b.trim().length > 0) ?? null;
+    }
+    if (dto.unitCount !== undefined) {
+      product.unitCount = dto.unitCount;
+    }
+    if (dto.unitCountType !== undefined) {
+      product.unitCountType = dto.unitCountType ?? null;
+    }
+    if (dto.formFactor !== undefined) {
+      product.formFactor = dto.formFactor ?? null;
+    }
+    if (dto.featured !== undefined) {
+      product.featured = dto.featured;
+    }
+    if (dto.billingType !== undefined || dto.billingInterval !== undefined || dto.billingQuantity !== undefined) {
+      const billing = this.computeBilling(dto.billingType, dto.billingInterval, dto.billingQuantity, product);
+      product.billingType = billing.billingType;
+      product.billingInterval = billing.billingInterval;
+      product.billingQuantity = billing.billingQuantity;
+    }
     if (dto.categories !== undefined) {
       product.categories = dto.categories?.length ? await this.resolveCategories(dto.categories) : [];
     }
@@ -162,6 +192,30 @@ export class ProductsService {
     }
     await this.media.deleteImage(product.imagePublicId, product.imageUrl);
     return this.productsRepository.softRemove(product);
+  }
+
+  private computeBilling(
+    billingType?: string,
+    billingInterval?: string,
+    billingQuantity?: number,
+    existing?: { billingType: 'one_time' | 'recurring'; billingInterval?: 'month' | 'year' | null; billingQuantity?: number },
+  ) {
+    const type = (billingType ?? existing?.billingType ?? 'one_time') as 'one_time' | 'recurring';
+    const quantity = billingQuantity ?? existing?.billingQuantity ?? 1;
+    const interval =
+      type === 'recurring'
+        ? ((billingInterval ?? existing?.billingInterval ?? null) as 'month' | 'year' | null)
+        : null;
+
+    if (type === 'recurring' && !interval) {
+      throw new BadRequestException('billingInterval is required when billingType is recurring');
+    }
+
+    return {
+      billingType: type,
+      billingInterval: interval,
+      billingQuantity: quantity,
+    };
   }
 
   private async resolveCategories(keys: string[]): Promise<ProductCategory[]> {
