@@ -16,6 +16,7 @@ import { AuthAudience, UserRole } from './types/auth.types';
 import { getAssignableRoles } from './utils/role.utils';
 import { CustomersService } from '../customers/customers.service';
 import { CustomerProfileRequiredException } from './exceptions/customer-profile-required.exception';
+import { MailerService } from '../mailer/mailer.service';
 
 @Injectable()
 export class AuthService {
@@ -31,6 +32,7 @@ export class AuthService {
     @InjectRepository(Vendor)
     private readonly vendorsRepo: Repository<Vendor>,
     private readonly customersService: CustomersService,
+    private readonly mailer: MailerService,
   ) {}
 
   async register(dto: RegisterUserDto): Promise<TokenResponseDto> {
@@ -165,8 +167,15 @@ export class AuthService {
       expiresIn: this.getResetTokenTtlSeconds(),
     });
 
-    // In production, send via email; return token here for development/testing.
-    return { success: true, token };
+    try {
+      await this.mailer.sendPasswordResetEmail({ to: user.email, token });
+    } catch (error) {
+      this.logger.error(`Unable to send password reset email to ${user.email}`, error as any);
+      // Do not leak email issues to the client; they still see success.
+    }
+
+    const includeToken = this.config.get<string>('NODE_ENV') !== 'production';
+    return { success: true, token: includeToken ? token : undefined };
   }
 
   async resetPassword(token: string, newPassword: string): Promise<{ success: true }> {

@@ -12,4 +12,12 @@ export class UpdateVendorDto {
   @IsString()
   @IsOptional()
   phoneNumber?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorImageUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorImagePublicId?: string;
 }

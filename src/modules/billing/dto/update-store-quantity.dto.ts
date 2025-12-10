@@ -1,9 +1,8 @@
-import { IsInt, IsOptional, IsPositive, IsString, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class UpdateStoreQuantityDto {
   @IsInt()
-  @IsPositive()
-  @Min(1)
+  @Min(0)
   @Max(500)
   quantity!: number;
 

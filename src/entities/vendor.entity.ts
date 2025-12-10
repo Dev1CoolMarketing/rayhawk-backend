@@ -16,6 +16,12 @@ export class Vendor {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
+  @Column({ name: 'vendor_image_url', type: 'text', nullable: true })
+  vendorImageUrl?: string | null;
+
+  @Column({ name: 'vendor_image_public_id', type: 'text', nullable: true })
+  vendorImagePublicId?: string | null;
+
   @Column({ name: 'stripe_account_id', type: 'text', nullable: true })
   stripeAccountId?: string | null;
 

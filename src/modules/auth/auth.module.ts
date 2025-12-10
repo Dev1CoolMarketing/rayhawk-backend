@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RefreshToken, Vendor } from '../../entities';
 import { UsersModule } from '../users/users.module';
 import { CustomersModule } from '../customers/customers.module';
+import { MailerModule } from '../mailer/mailer.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -19,6 +20,7 @@ import { LocalStrategy } from './strategies/local.strategy';
     PassportModule,
     UsersModule,
     CustomersModule,
+    MailerModule,
     TypeOrmModule.forFeature([RefreshToken, Vendor]),
     JwtModule.registerAsync({
       imports: [ConfigModule],

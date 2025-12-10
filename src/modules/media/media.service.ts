@@ -12,15 +12,32 @@ export class MediaService {
   private readonly folder: string;
 
   constructor(private readonly config: ConfigService) {
+    const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey = this.config.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET');
+    if (!cloudName || !apiKey || !apiSecret) {
+      // Throwing here would boot the app; instead, configure lazily and throw on upload.
+      this.folder = 'tshots';
+      return;
+    }
     cloudinary.config({
-      cloud_name: this.config.get<string>('CLOUDINARY_CLOUD_NAME'),
-      api_key: this.config.get<string>('CLOUDINARY_API_KEY'),
-      api_secret: this.config.get<string>('CLOUDINARY_API_SECRET'),
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
     });
     this.folder = this.config.get<string>('CLOUDINARY_MEDIA_FOLDER') ?? 'tshots';
   }
 
   async uploadBase64Image(data: string, folderSuffix?: string): Promise<ImageUploadResult> {
+    const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey = this.config.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET');
+    if (!cloudName || !apiKey || !apiSecret) {
+      throw new InternalServerErrorException(
+        'Image upload is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.',
+      );
+    }
+
     try {
       const folder = folderSuffix ? `${this.folder}/${folderSuffix}` : this.folder;
       const response = await cloudinary.uploader.upload(data, {
@@ -29,7 +46,14 @@ export class MediaService {
       });
       return this.mapResponse(response);
     } catch (error) {
-      throw new InternalServerErrorException(`Failed to upload image: ${(error as Error).message}`);
+      const message =
+        (error as any)?.message ??
+        (error as any)?.error?.message ??
+        (typeof error === 'string' ? error : 'Unexpected error');
+      const hint = message?.toLowerCase().includes('file size')
+        ? ' (file may be too large; limit ~10MB)'
+        : '';
+      throw new InternalServerErrorException(`Failed to upload image: ${message}${hint}`);
     }
   }
 

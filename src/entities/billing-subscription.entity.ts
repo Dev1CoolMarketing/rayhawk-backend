@@ -70,6 +70,9 @@ export class BillingSubscription {
   @Column({ name: 'trial_end', type: 'timestamptz', nullable: true })
   trialEnd?: Date | null;
 
+  @Column({ name: 'collection_method', type: 'text', nullable: true })
+  collectionMethod?: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

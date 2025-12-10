@@ -7,12 +7,15 @@ import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { BillingService } from '../billing/billing.service';
 import { VendorPlanKey } from '../billing/constants/vendor-plans';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
+import { MediaService } from '../media/media.service';
+import { UploadImageDto } from '../../common/dto/upload-image.dto';
 
 @Injectable()
 export class VendorsService {
   constructor(
     private readonly usersService: UsersService,
     private readonly billingService: BillingService,
+    private readonly media: MediaService,
     @InjectRepository(Vendor) private readonly vendorsRepo: Repository<Vendor>,
   ) {}
 
@@ -29,11 +32,15 @@ export class VendorsService {
         ownerId: userId,
         name: dto.vendorName,
         description: dto.vendorDescription ?? null,
+        vendorImageUrl: dto.vendorImageUrl ?? null,
+        vendorImagePublicId: dto.vendorImagePublicId ?? null,
         status: 'active',
       });
     } else {
       vendor.name = dto.vendorName;
       vendor.description = dto.vendorDescription ?? vendor.description ?? null;
+      vendor.vendorImageUrl = dto.vendorImageUrl ?? vendor.vendorImageUrl ?? null;
+      vendor.vendorImagePublicId = dto.vendorImagePublicId ?? vendor.vendorImagePublicId ?? null;
       if (vendor.status !== 'active') {
         vendor.status = 'active';
       }
@@ -109,6 +116,27 @@ export class VendorsService {
     if (dto.phoneNumber !== undefined) {
       vendor.phoneNumber = dto.phoneNumber.trim().length ? dto.phoneNumber.trim() : null;
     }
+    if (dto.vendorImageUrl !== undefined) {
+      const url = dto.vendorImageUrl.trim();
+      vendor.vendorImageUrl = url.length ? url : null;
+    }
+    if (dto.vendorImagePublicId !== undefined) {
+      vendor.vendorImagePublicId = dto.vendorImagePublicId ?? null;
+    }
     return this.vendorsRepo.save(vendor);
+  }
+
+  async uploadVendorImage(ownerId: string, dto: UploadImageDto) {
+    const vendor = await this.vendorsRepo.findOne({ where: { ownerId } });
+    if (!vendor) {
+      throw new ForbiddenException('Vendor onboarding required before updating profile');
+    }
+    const uploaded = await this.media.uploadBase64Image(dto.file, `vendors/${vendor.id}`);
+    // Delete old asset if present
+    await this.media.deleteImage(vendor.vendorImagePublicId, vendor.vendorImageUrl);
+    vendor.vendorImageUrl = uploaded.url;
+    vendor.vendorImagePublicId = uploaded.publicId;
+    await this.vendorsRepo.save(vendor);
+    return { url: uploaded.url, publicId: uploaded.publicId };
   }
 }
