@@ -31,13 +31,24 @@ async function bootstrap() {
     if (req.originalUrl.startsWith(stripeWebhookPath)) {
       return next();
     }
-    return json()(req, res, next);
+    return json({ limit: '10mb' })(req, res, next);
   });
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.originalUrl.startsWith(stripeWebhookPath)) {
       return next();
     }
-    return urlencoded({ extended: true })(req, res, next);
+    return urlencoded({ extended: true, limit: '10mb' })(req, res, next);
+  });
+
+  // Friendly handler for oversized payloads
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err?.type === 'entity.too.large') {
+      return res.status(413).json({
+        statusCode: 413,
+        message: 'Upload too large. Please limit uploads to 10MB.',
+      });
+    }
+    return next(err);
   });
 
   app.setGlobalPrefix('v1');

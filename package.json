@@ -38,6 +38,8 @@
     "dotenv": "^16.4.5",
     "ioredis": "^5.4.1",
     "jose": "^5.9.3",
+    "nodemailer": "^6.9.13",
+    "@types/nodemailer": "^6.4.13",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
