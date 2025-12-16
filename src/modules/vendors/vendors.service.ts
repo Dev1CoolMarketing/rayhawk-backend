@@ -114,10 +114,11 @@ export class VendorsService {
       vendor.description = dto.description ?? null;
     }
     if (dto.phoneNumber !== undefined) {
-      vendor.phoneNumber = dto.phoneNumber.trim().length ? dto.phoneNumber.trim() : null;
+      const phone = dto.phoneNumber ? dto.phoneNumber.trim() : '';
+      vendor.phoneNumber = phone.length ? phone : null;
     }
     if (dto.vendorImageUrl !== undefined) {
-      const url = dto.vendorImageUrl.trim();
+      const url = dto.vendorImageUrl ? dto.vendorImageUrl.trim() : '';
       vendor.vendorImageUrl = url.length ? url : null;
     }
     if (dto.vendorImagePublicId !== undefined) {

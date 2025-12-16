@@ -8,6 +8,7 @@ import {
   ManyToOne,
   ManyToMany,
   PrimaryGeneratedColumn,
+  Index,
   UpdateDateColumn,
 } from 'typeorm';
 import { Store } from './store.entity';
@@ -27,6 +28,10 @@ export class Product {
 
   @Column({ type: 'text' })
   name!: string;
+
+  @Index('products_store_slug_active_idx', { unique: true, where: '"deleted_at" IS NULL' })
+  @Column({ type: 'text' })
+  slug!: string;
 
   @Column({ type: 'text', nullable: true })
   description?: string | null;

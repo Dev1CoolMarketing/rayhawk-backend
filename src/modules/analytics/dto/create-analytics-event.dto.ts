@@ -4,6 +4,11 @@ export enum AnalyticsEventType {
   PageView = 'page_view',
   ClickThrough = 'click_through',
   ProductView = 'product_view',
+  ProductClick = 'product_click',
+  Search = 'search',
+  FavoriteAdd = 'favorite_add',
+  FavoriteRemove = 'favorite_remove',
+  ReviewSubmit = 'review_submit',
 }
 
 export class CreateAnalyticsEventDto {
@@ -32,4 +37,7 @@ export class CreateAnalyticsEventDto {
   @IsString()
   @MaxLength(1024)
   userAgent?: string;
+
+  @IsOptional()
+  metadata?: Record<string, unknown>;
 }

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
@@ -48,5 +48,17 @@ export class ReviewsController {
     @User() user: RequestUser,
   ) {
     return this.reviewsService.deleteReview(storeId, reviewId, user.id, user.role);
+  }
+}
+
+@ApiTags('Reviews')
+@Controller('reviews')
+export class ReviewSummariesController {
+  constructor(private readonly reviewsService: ReviewsService) {}
+
+  @Get('summaries')
+  getSummaries(@Query('storeIds') storeIds?: string | string[]) {
+    const list = Array.isArray(storeIds) ? storeIds : typeof storeIds === 'string' ? storeIds.split(',') : [];
+    return this.reviewsService.getStoreReviewSummaries(list);
   }
 }

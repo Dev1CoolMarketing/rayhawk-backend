@@ -7,6 +7,7 @@ import { MediaService } from '../media/media.service';
 import { LinkImageDto } from '../../common/dto/link-image.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { BillingService } from '../billing/billing.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ProductsService {
@@ -71,6 +72,7 @@ export class ProductsService {
 
     const categories = dto.categories?.length ? await this.resolveCategories(dto.categories) : [];
     const billing = this.computeBilling(dto.billingType, dto.billingInterval, dto.billingQuantity);
+    const slug = this.slugify(dto.slug ?? dto.name);
 
     const product = this.productsRepository.create({
       ...dto,
@@ -86,8 +88,13 @@ export class ProductsService {
       billingType: billing.billingType,
       billingInterval: billing.billingInterval,
       billingQuantity: billing.billingQuantity,
+      slug,
     });
-    return this.productsRepository.save(product);
+    try {
+      return await this.productsRepository.save(product);
+    } catch (error) {
+      this.handleSlugCollision(error);
+    }
   }
 
   async updateImage(storeId: string, productId: string, ownerId: string, image: LinkImageDto) {
@@ -149,6 +156,9 @@ export class ProductsService {
       }
       product.status = dto.status;
     }
+    if (dto.slug !== undefined) {
+      product.slug = this.slugify(dto.slug || product.name);
+    }
     if (dto.linkUrl !== undefined) {
       product.linkUrl = dto.linkUrl ?? null;
     }
@@ -176,7 +186,11 @@ export class ProductsService {
     if (dto.categories !== undefined) {
       product.categories = dto.categories?.length ? await this.resolveCategories(dto.categories) : [];
     }
-    return this.productsRepository.save(product);
+    try {
+      return await this.productsRepository.save(product);
+    } catch (error) {
+      this.handleSlugCollision(error);
+    }
   }
 
   async remove(storeId: string, productId: string, ownerId: string) {
@@ -227,5 +241,25 @@ export class ProductsService {
       throw new NotFoundException('One or more categories were not found or are inactive');
     }
     return categories;
+  }
+
+  private slugify(input: string) {
+    const base = input
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 200);
+    const suffix = randomUUID().slice(0, 8);
+    return base ? `${base}-${suffix}` : suffix;
+  }
+
+  private handleSlugCollision(error: unknown): never {
+    const isQueryError = error instanceof Error && (error as any).driverError;
+    const code = isQueryError ? (error as any).driverError?.code : null;
+    const constraint = isQueryError ? (error as any).driverError?.constraint : null;
+    if (code === '23505' && constraint?.includes('products_store_slug_active_idx')) {
+      throw new BadRequestException('Product slug already in use for this store. Try a different slug.');
+    }
+    throw error;
   }
 }

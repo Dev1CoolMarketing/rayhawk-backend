@@ -12,7 +12,25 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
 
-  app.enableCors();
+  const corsOrigins =
+    configService
+      .get<string>('CORS_ORIGINS')
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean) ?? [];
+  const fallbackOrigins = [
+    configService.get<string>('FRONTEND_APP_URL'),
+    configService.get<string>('FRONTEND_VENDOR_APP_URL'),
+    'http://localhost:3000',
+    // Allow Expo web dev server during development only
+    process.env.NODE_ENV !== 'production' ? 'http://localhost:8081' : null,
+  ].filter(Boolean) as string[];
+  const originList = corsOrigins.length ? corsOrigins : fallbackOrigins;
+
+  app.enableCors({
+    origin: originList.length ? originList : false,
+    credentials: true,
+  });
 
   const stripeWebhookPath = '/v1/webhooks/stripe';
   // Stripe needs raw body for signature verification; register before other parsers.
