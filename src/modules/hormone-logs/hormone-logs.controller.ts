@@ -1,10 +1,25 @@
-import { Controller, Get, Post, Body, UseGuards, Query, DefaultValuePipe, ParseIntPipe, ForbiddenException } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  DefaultValuePipe,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseIntPipe,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { HormoneLogsService } from './hormone-logs.service';
 import { CreateHormoneLogDto } from './dto/create-hormone-log.dto';
+import { UpdateHormoneLogDto } from './dto/update-hormone-log.dto';
 
 @ApiTags('HormoneLogs')
 @ApiBearerAuth()
@@ -30,6 +45,20 @@ export class HormoneLogsController {
     @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
   ) {
     return this.hormoneLogsService.listForUser(user.id, limit, offset);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateHormoneLogDto,
+    @User() user: RequestUser,
+  ) {
+    return this.hormoneLogsService.update(user.id, user.role, id, dto);
+  }
+
+  @Delete(':id')
+  remove(@Param('id', new ParseUUIDPipe()) id: string, @User() user: RequestUser) {
+    return this.hormoneLogsService.remove(user.id, user.role, id);
   }
 
   @Get('admin/summary')

@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { HormoneLog, HormoneFormFactor, CustomerProfile } from '../../entities';
 import { CreateHormoneLogDto } from './dto/create-hormone-log.dto';
 import { HormoneLogResponseDto, HormoneLogSummaryDto } from './dto/hormone-log-response.dto';
+import { UpdateHormoneLogDto } from './dto/update-hormone-log.dto';
 
 @Injectable()
 export class HormoneLogsService {
@@ -108,6 +109,47 @@ export class HormoneLogsService {
       })),
       byMood: byMood.map((row) => ({ moodScore: Number(row.moodScore), count: Number(row.count) || 0 })),
     };
+  }
+
+  async update(userId: string, role: string, id: string, dto: UpdateHormoneLogDto): Promise<HormoneLogResponseDto> {
+    if (role !== 'customer') {
+      throw new ForbiddenException('Only customers can update hormone tracking entries');
+    }
+    const profile = await this.profilesRepo.findOne({ where: { userId } });
+    if (!profile) {
+      throw new NotFoundException('Customer profile not found');
+    }
+    const log = await this.logsRepo.findOne({ where: { id, customerProfileId: profile.userId } });
+    if (!log) {
+      throw new NotFoundException('Log not found');
+    }
+
+    if (dto.dateTaken) {
+      log.dateTaken = new Date(dto.dateTaken).toISOString().slice(0, 10);
+    }
+    if (dto.testosteroneLevel !== undefined) log.testosteroneNgDl = dto.testosteroneLevel;
+    if (dto.estradiolLevel !== undefined) log.estradiolPgMl = dto.estradiolLevel;
+    if (dto.doseMg !== undefined) log.doseMg = dto.doseMg;
+    if (dto.formFactor) log.formFactor = dto.formFactor;
+    if (dto.moodScore !== undefined) log.moodScore = dto.moodScore;
+    if (dto.moodNotes !== undefined) log.moodNotes = dto.moodNotes?.trim() || null;
+
+    const saved = await this.logsRepo.save(log);
+    return this.mapLog(saved);
+  }
+
+  async remove(userId: string, role: string, id: string): Promise<void> {
+    if (role !== 'customer') {
+      throw new ForbiddenException('Only customers can delete hormone tracking entries');
+    }
+    const profile = await this.profilesRepo.findOne({ where: { userId } });
+    if (!profile) {
+      throw new NotFoundException('Customer profile not found');
+    }
+    const result = await this.logsRepo.delete({ id, customerProfileId: profile.userId });
+    if (!result.affected) {
+      throw new NotFoundException('Log not found');
+    }
   }
 
   private mapLog(log: HormoneLog): HormoneLogResponseDto {
