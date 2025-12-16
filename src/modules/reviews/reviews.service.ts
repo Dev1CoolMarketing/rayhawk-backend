@@ -129,6 +129,89 @@ export class ReviewsService {
     };
   }
 
+  async getStoreReviewSummaries(storeIds: string[]): Promise<ReviewSummaryDto[]> {
+    const ids = Array.from(new Set(storeIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
+    if (!ids.length) {
+      return [];
+    }
+
+    const ratingRows = await this.reviewsRepo
+      .createQueryBuilder('review')
+      .select('review.storeId', 'storeId')
+      .addSelect('review.rating', 'rating')
+      .addSelect('COUNT(*)', 'count')
+      .where('review.storeId IN (:...storeIds)', { storeIds: ids })
+      .andWhere('review.status = :status', { status: 'published' })
+      .groupBy('review.storeId')
+      .addGroupBy('review.rating')
+      .getRawMany<{ storeId: string; rating: number; count: string }>();
+
+    const tagRows = await this.tagsRepo
+      .createQueryBuilder('tag')
+      .select('review.storeId', 'storeId')
+      .addSelect('tag.key', 'key')
+      .addSelect('tag.label', 'label')
+      .addSelect('COUNT(*)', 'count')
+      .innerJoin('tag.reviews', 'review', 'review.storeId IN (:...storeIds) AND review.status = :status', {
+        storeIds: ids,
+        status: 'published',
+      })
+      .groupBy('review.storeId')
+      .addGroupBy('tag.key')
+      .addGroupBy('tag.label')
+      .orderBy('count', 'DESC')
+      .getRawMany<{ storeId: string; key: string; label: string; count: string }>();
+
+    const summaries = new Map<string, ReviewSummaryDto>();
+    ids.forEach((id) => {
+      summaries.set(id, {
+        storeId: id,
+        averageRating: 0,
+        total: 0,
+        counts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        topTags: [],
+      });
+    });
+
+    ratingRows.forEach((row) => {
+      const summary = summaries.get(row.storeId);
+      if (!summary) return;
+      const rating = Number(row.rating);
+      const count = Number(row.count) || 0;
+      if (rating >= 1 && rating <= 5) {
+        summary.counts[rating] = count;
+      }
+    });
+
+    summaries.forEach((summary) => {
+      const total = Object.values(summary.counts).reduce((sum, value) => sum + value, 0);
+      summary.total = total;
+      summary.averageRating =
+        total === 0
+          ? 0
+          : Object.entries(summary.counts).reduce((sum, [rating, count]) => sum + Number(rating) * count, 0) / total;
+    });
+
+    const tagsByStore = new Map<string, { key: string; label: string; count: number }[]>();
+    tagRows.forEach((row) => {
+      const list = tagsByStore.get(row.storeId) ?? [];
+      list.push({
+        key: row.key,
+        label: row.label,
+        count: Number(row.count) || 0,
+      });
+      tagsByStore.set(row.storeId, list);
+    });
+
+    tagsByStore.forEach((tags, storeId) => {
+      const summary = summaries.get(storeId);
+      if (!summary) return;
+      summary.topTags = tags.sort((a, b) => b.count - a.count).slice(0, 5);
+    });
+
+    return Array.from(summaries.values());
+  }
+
   private async resolveTags(keys: string[]): Promise<ReviewTag[]> {
     const tags = await this.tagsRepo.find({ where: { key: In(keys) } });
     return tags;

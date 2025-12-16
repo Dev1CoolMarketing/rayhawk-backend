@@ -809,7 +809,6 @@ export class BillingService {
   }
 
   async recordWebhookEvent(event: Stripe.Event, processedAt?: Date) {
-    console.log('IS THIS RECORDING THE EVENT?')
     const existing = await this.eventsRepo.findOne({
       where: { stripeEventId: event.id },
     });

@@ -9,6 +9,7 @@ import { RefreshToken, User, Vendor } from '../../../entities';
 import { UsersService } from '../../users/users.service';
 import { CustomersService } from '../../customers/customers.service';
 import { AuthService } from '../auth.service';
+import { MailerService } from '../../mailer/mailer.service';
 
 jest.mock('bcrypt', () => ({
   hash: jest.fn().mockResolvedValue('hashed-password'),
@@ -96,6 +97,13 @@ describe('AuthService', () => {
           provide: CustomersService,
           useValue: {
             createProfile: jest.fn(),
+          },
+        },
+        {
+          provide: MailerService,
+          useValue: {
+            sendWelcomeEmail: jest.fn(),
+            sendPasswordResetEmail: jest.fn(),
           },
         },
       ],

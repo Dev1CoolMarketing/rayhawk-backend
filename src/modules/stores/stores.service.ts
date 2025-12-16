@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, QueryFailedError, Repository } from 'typeorm';
 import { Product, Store, Vendor } from '../../entities';
@@ -7,15 +7,19 @@ import { MediaService } from '../media/media.service';
 import { LinkImageDto } from '../../common/dto/link-image.dto';
 import { UpdateStoreDto } from './dto/update-store.dto';
 import { BillingService } from '../billing/billing.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class StoresService {
+  private readonly logger = new Logger(StoresService.name);
+
   constructor(
     @InjectRepository(Store) private readonly storesRepository: Repository<Store>,
     @InjectRepository(Product) private readonly productsRepository: Repository<Product>,
     @InjectRepository(Vendor) private readonly vendorsRepository: Repository<Vendor>,
     private readonly media: MediaService,
     private readonly billingService: BillingService,
+    private readonly config: ConfigService,
   ) {}
 
   findActive() {
@@ -81,9 +85,13 @@ export class StoresService {
       openingHours: dto.openingHours ?? null,
       description: dto.description ?? null,
       phoneNumber: dto.phoneNumber?.trim() ? dto.phoneNumber.trim() : null,
-      latitude: dto.latitude ?? null,
-      longitude: dto.longitude ?? null,
     });
+
+    if (!store.latitude || !store.longitude) {
+      const coords = await this.geocodeAddress(store);
+      store.latitude = coords?.latitude ?? null;
+      store.longitude = coords?.longitude ?? null;
+    }
     try {
       return await this.storesRepository.save(store);
     } catch (error) {
@@ -102,20 +110,26 @@ export class StoresService {
     if (dto.description !== undefined) {
       store.description = dto.description.trim().length ? dto.description : null;
     }
+    let addressChanged = false;
     if (dto.addressLine1 !== undefined) {
       store.addressLine1 = dto.addressLine1;
+      addressChanged = true;
     }
     if (dto.addressLine2 !== undefined) {
       store.addressLine2 = dto.addressLine2.trim().length ? dto.addressLine2 : null;
+      addressChanged = true;
     }
     if (dto.city !== undefined) {
       store.city = dto.city;
+      addressChanged = true;
     }
     if (dto.state !== undefined) {
       store.state = dto.state;
+      addressChanged = true;
     }
     if (dto.postalCode !== undefined) {
       store.postalCode = dto.postalCode;
+      addressChanged = true;
     }
     if (dto.status !== undefined) {
       // Only allow activation if under limit and plan active
@@ -142,11 +156,10 @@ export class StoresService {
     if (dto.phoneNumber !== undefined) {
       store.phoneNumber = dto.phoneNumber.trim().length ? dto.phoneNumber.trim() : null;
     }
-    if (dto.latitude !== undefined) {
-      store.latitude = dto.latitude ?? null;
-    }
-    if (dto.longitude !== undefined) {
-      store.longitude = dto.longitude ?? null;
+    if (addressChanged) {
+      const coords = await this.geocodeAddress(store);
+      store.latitude = coords?.latitude ?? null;
+      store.longitude = coords?.longitude ?? null;
     }
     try {
       return await this.storesRepository.save(store);
@@ -209,10 +222,38 @@ export class StoresService {
     if (
       isQueryError &&
       (error.driverError?.code === '23505' || error.driverError?.routine === '_bt_check_unique') &&
-      error.driverError?.constraint === 'IDX_790b2968701a6ff5ff38323776'
+      (error.driverError?.constraint === 'IDX_790b2968701a6ff5ff38323776' ||
+        error.driverError?.constraint === 'stores_slug_active_idx')
     ) {
       throw new ConflictException('Store slug already in use. Try a different slug.');
     }
     throw error;
+  }
+
+  private async geocodeAddress(store: Pick<Store, 'addressLine1' | 'addressLine2' | 'city' | 'state' | 'postalCode'>) {
+    const token = this.config.get<string>('MAPBOX_TOKEN');
+    if (!token) {
+      this.logger.warn('MAPBOX_TOKEN not set; skipping geocoding');
+      return null;
+    }
+    const addressParts = [store.addressLine1, store.addressLine2, store.city, store.state, store.postalCode]
+      .filter(Boolean)
+      .join(', ');
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(addressParts)}.json?access_token=${token}&limit=1&autocomplete=false`;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        this.logger.warn(`Mapbox geocode failed: ${response.status} ${response.statusText}`);
+        return null;
+      }
+      const data = (await response.json()) as { features?: { center?: [number, number] }[] };
+      const coords = data.features?.[0]?.center;
+      if (coords && coords.length === 2) {
+        return { longitude: coords[0], latitude: coords[1] };
+      }
+    } catch (error) {
+      this.logger.warn(`Mapbox geocode error: ${(error as Error)?.message ?? error}`);
+    }
+    return null;
   }
 }

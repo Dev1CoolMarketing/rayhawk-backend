@@ -53,6 +53,12 @@ export class CreateProductDto {
   @MaxLength(255)
   name!: string;
 
+  @ApiProperty({ example: 'premium-featured-listing', required: false })
+  @IsString()
+  @IsOptional()
+  @MaxLength(255)
+  slug?: string;
+
   @ApiProperty({ example: 'Boosts visibility for 30 days', required: false })
   @IsString()
   @IsOptional()

@@ -69,32 +69,40 @@ export class  StripeWebhookController {
     if (existingEvent.processedAt) {
       return { received: true };
     }
-    console.log('THIS IS HIT HERE?');
-    console.log('THIS IS EVENT TYPE', event)
-    switch (event.type) {
-      case 'checkout.session.completed':
-        await this.handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
-        break;
-      case 'customer.subscription.created':
-      case 'customer.subscription.updated':
-      case 'customer.subscription.deleted':
-      case 'customer.subscription.resumed':
-      case 'customer.subscription.paused':
-        await this.syncSubscription(event.data.object as Stripe.Subscription);
-        break;
-      case 'invoice.payment_succeeded':
-      case 'invoice.payment_failed':
-      case 'invoice.finalized':
-        await this.handleInvoice(event.data.object as Stripe.Invoice);
-        break;
-      case 'payment_intent.succeeded':
-        this.logger.log(`Stripe payment_intent.succeeded received: ${(event.data.object as Stripe.PaymentIntent).id}`);
-        break;
-      default:
-        break;
-    }
 
-    await this.billingService.recordWebhookEvent(event, new Date());
+    try {
+      switch (event.type) {
+        case 'checkout.session.completed':
+          await this.handleCheckoutCompleted(event.data.object as Stripe.Checkout.Session);
+          break;
+        case 'customer.subscription.created':
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted':
+        case 'customer.subscription.resumed':
+        case 'customer.subscription.paused':
+          await this.syncSubscription(event.data.object as Stripe.Subscription);
+          break;
+        case 'invoice.payment_succeeded':
+        case 'invoice.payment_failed':
+        case 'invoice.finalized':
+        case 'invoice.voided':
+        case 'invoice.marked_uncollectible':
+          await this.handleInvoice(event.data.object as Stripe.Invoice);
+          break;
+        case 'payment_intent.succeeded':
+          this.logger.log(
+            `Stripe payment_intent.succeeded received: ${(event.data.object as Stripe.PaymentIntent).id}`,
+          );
+          break;
+        default:
+          this.logger.log(`Stripe event ignored: ${event.type}`);
+          break;
+      }
+      await this.billingService.recordWebhookEvent(event, new Date());
+    } catch (err) {
+      this.logger.error(`Stripe webhook processing failed for ${event.type} (${event.id}): ${(err as Error).message}`);
+      throw err;
+    }
 
     return { received: true };
   }

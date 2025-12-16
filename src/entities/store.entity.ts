@@ -33,7 +33,7 @@ export class Store {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Index({ unique: true })
+  @Index('stores_slug_active_idx', { unique: true, where: '"deleted_at" IS NULL' })
   @Column({ type: 'text' })
   slug!: string;
 

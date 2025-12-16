@@ -43,7 +43,7 @@ export class AnalyticsService {
     @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
   ) {}
 
-  async recordEvent(dto: CreateAnalyticsEventDto) {
+  async recordEvent(dto: CreateAnalyticsEventDto, ipHash?: string | null) {
     this.logger.log(
       `Record analytics event type=${dto.type} storeId=${dto.storeId} productId=${dto.productId ?? 'none'}`,
     );
@@ -61,6 +61,8 @@ export class AnalyticsService {
       referrer: dto.referrer ?? null,
       sessionId: dto.sessionId ?? null,
       userAgent: dto.userAgent ?? null,
+      ipHash: ipHash ?? null,
+      metadata: dto.metadata ?? null,
     });
     return this.eventsRepo.save(event);
   }
@@ -91,13 +93,16 @@ export class AnalyticsService {
     const totals = await this.eventsRepo
       .createQueryBuilder('event')
       .select(`SUM(CASE WHEN event.type = :pv THEN 1 ELSE 0 END)`, 'pageViews')
-      .addSelect(`SUM(CASE WHEN event.type = :ct THEN 1 ELSE 0 END)`, 'clickThroughs')
+      .addSelect(
+        `SUM(CASE WHEN event.type IN (:...ctTypes) THEN 1 ELSE 0 END)`,
+        'clickThroughs',
+      )
       .addSelect(`SUM(CASE WHEN event.type = :prd THEN 1 ELSE 0 END)`, 'productViews')
       .where('event.storeId = :storeId', { storeId: params.storeId })
       .andWhere('event.occurredAt BETWEEN :from AND :to', { from, to })
       .setParameters({
         pv: AnalyticsEventType.PageView,
-        ct: AnalyticsEventType.ClickThrough,
+        ctTypes: [AnalyticsEventType.ClickThrough, AnalyticsEventType.ProductClick],
         prd: AnalyticsEventType.ProductView,
       })
       .getRawOne();
@@ -106,13 +111,16 @@ export class AnalyticsService {
       .createQueryBuilder('event')
       .select(`date_trunc(:bucket, event.occurredAt)`, 'period')
       .addSelect(`SUM(CASE WHEN event.type = :pv THEN 1 ELSE 0 END)`, 'pageViews')
-      .addSelect(`SUM(CASE WHEN event.type = :ct THEN 1 ELSE 0 END)`, 'clickThroughs')
+      .addSelect(
+        `SUM(CASE WHEN event.type IN (:...ctTypes) THEN 1 ELSE 0 END)`,
+        'clickThroughs',
+      )
       .addSelect(`SUM(CASE WHEN event.type = :prd THEN 1 ELSE 0 END)`, 'productViews')
       .where('event.storeId = :storeId', { storeId: params.storeId })
       .andWhere('event.occurredAt BETWEEN :from AND :to', { from, to })
       .setParameters({
         pv: AnalyticsEventType.PageView,
-        ct: AnalyticsEventType.ClickThrough,
+        ctTypes: [AnalyticsEventType.ClickThrough, AnalyticsEventType.ProductClick],
         prd: AnalyticsEventType.ProductView,
         bucket: group,
       })
@@ -166,11 +174,14 @@ export class AnalyticsService {
       .createQueryBuilder('event')
       .select('event.productId', 'productId')
       .addSelect(`SUM(CASE WHEN event.type = :prd THEN 1 ELSE 0 END)`, 'productViews')
-      .addSelect(`SUM(CASE WHEN event.type = :ct THEN 1 ELSE 0 END)`, 'clickThroughs')
+      .addSelect(`SUM(CASE WHEN event.type IN (:...ctTypes) THEN 1 ELSE 0 END)`, 'clickThroughs')
       .where('event.storeId = :storeId', { storeId: params.storeId })
       .andWhere('event.productId IS NOT NULL')
       .andWhere('event.occurredAt BETWEEN :from AND :to', { from, to })
-      .setParameters({ prd: AnalyticsEventType.ProductView, ct: AnalyticsEventType.ClickThrough })
+      .setParameters({
+        prd: AnalyticsEventType.ProductView,
+        ctTypes: [AnalyticsEventType.ClickThrough, AnalyticsEventType.ProductClick],
+      })
       .groupBy('event.productId')
       .orderBy('productViews', 'DESC')
       .getRawMany<{ productId: string; productViews: string; clickThroughs: string }>();

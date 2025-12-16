@@ -19,7 +19,15 @@ export class AnalyticsEvent {
 
   @Index()
   @Column({ type: 'text' })
-  type!: 'page_view' | 'click_through' | 'product_view';
+  type!:
+    | 'page_view'
+    | 'click_through'
+    | 'product_view'
+    | 'product_click'
+    | 'search'
+    | 'favorite_add'
+    | 'favorite_remove'
+    | 'review_submit';
 
   @Column({ name: 'referrer', type: 'text', nullable: true })
   referrer?: string | null;
