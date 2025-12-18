@@ -1,5 +1,7 @@
 export interface ReviewResponseDto {
   id: string;
+  storeId: string;
+  productId?: string | null;
   rating: number;
   comment: string | null;
   tags: { key: string; label: string }[];
@@ -9,7 +11,8 @@ export interface ReviewResponseDto {
 }
 
 export interface ReviewSummaryDto {
-  storeId: string;
+  storeId?: string | null;
+  productId?: string | null;
   averageRating: number;
   total: number;
   counts: Record<number, number>;

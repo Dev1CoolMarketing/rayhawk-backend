@@ -44,7 +44,8 @@ export class AuthService {
 
     const passwordHash = await hash(dto.password, this.saltRounds);
     const user = await this.usersService.create(normalizedEmail, passwordHash);
-    return this.issueTokens(user);
+    const requestedRole = payload.role ?? null;
+    return this.issueTokens(user, { requestedRole });
   }
 
   async registerCustomer(dto: RegisterCustomerDto): Promise<TokenResponseDto> {

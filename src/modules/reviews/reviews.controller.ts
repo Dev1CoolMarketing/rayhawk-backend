@@ -52,6 +52,51 @@ export class ReviewsController {
 }
 
 @ApiTags('Reviews')
+@Controller('products/:productId/reviews')
+export class ProductReviewsController {
+  constructor(private readonly reviewsService: ReviewsService) {}
+
+  @Get()
+  getProductReviews(@Param('productId', new ParseUUIDPipe()) productId: string, @User() user?: RequestUser) {
+    return this.reviewsService.listProductReviews(productId, user?.id);
+  }
+
+  @Get('summary')
+  getProductSummary(@Param('productId', new ParseUUIDPipe()) productId: string) {
+    return this.reviewsService.getProductReviewSummary(productId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getMyProductReview(@Param('productId', new ParseUUIDPipe()) productId: string, @User() user: RequestUser) {
+    return this.reviewsService.getUserProductReview(productId, user.id);
+  }
+
+  @Post()
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  createProductReview(
+    @Param('productId', new ParseUUIDPipe()) productId: string,
+    @Body() dto: CreateReviewDto,
+    @User() user: RequestUser,
+  ) {
+    return this.reviewsService.createProductReview(productId, user.id, user.role, dto);
+  }
+
+  @Delete(':reviewId')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  deleteProductReview(
+    @Param('productId', new ParseUUIDPipe()) productId: string,
+    @Param('reviewId', new ParseUUIDPipe()) reviewId: string,
+    @User() user: RequestUser,
+  ) {
+    return this.reviewsService.deleteProductReview(productId, reviewId, user.id, user.role);
+  }
+}
+
+@ApiTags('Reviews')
 @Controller('reviews')
 export class ReviewSummariesController {
   constructor(private readonly reviewsService: ReviewsService) {}
@@ -60,5 +105,11 @@ export class ReviewSummariesController {
   getSummaries(@Query('storeIds') storeIds?: string | string[]) {
     const list = Array.isArray(storeIds) ? storeIds : typeof storeIds === 'string' ? storeIds.split(',') : [];
     return this.reviewsService.getStoreReviewSummaries(list);
+  }
+
+  @Get('product-summaries')
+  getProductSummaries(@Query('productIds') productIds?: string | string[]) {
+    const list = Array.isArray(productIds) ? productIds : typeof productIds === 'string' ? productIds.split(',') : [];
+    return this.reviewsService.getProductReviewSummaries(list);
   }
 }

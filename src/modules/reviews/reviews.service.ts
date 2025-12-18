@@ -1,7 +1,7 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
-import { Review, ReviewTag, Store, User } from '../../entities';
+import { In, IsNull, Repository } from 'typeorm';
+import { Product, Review, ReviewTag, Store, User } from '../../entities';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { ReviewResponseDto, ReviewSummaryDto } from './dto/review-response.dto';
 
@@ -12,6 +12,7 @@ export class ReviewsService {
     @InjectRepository(ReviewTag) private readonly tagsRepo: Repository<ReviewTag>,
     @InjectRepository(Store) private readonly storesRepo: Repository<Store>,
     @InjectRepository(User) private readonly usersRepo: Repository<User>,
+    @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
   ) {}
 
   async createReview(storeId: string, userId: string, role: string, dto: CreateReviewDto): Promise<ReviewResponseDto> {
@@ -24,16 +25,24 @@ export class ReviewsService {
     }
 
     const existing = await this.reviewsRepo.findOne({
-      where: { storeId, userId, deletedAt: null as any },
+      where: { storeId, productId: IsNull(), userId, deletedAt: null as any },
+      relations: ['tags'],
     });
-    if (existing) {
-      throw new ConflictException('You have already reviewed this store');
-    }
 
     const tags = dto.tags?.length ? await this.resolveTags(dto.tags) : [];
 
+    if (existing) {
+      existing.rating = dto.rating;
+      existing.comment = dto.comment ?? null;
+      existing.tags = tags;
+      existing.status = 'published';
+      const saved = await this.reviewsRepo.save(existing);
+      return this.mapReview(saved, userId);
+    }
+
     const review = this.reviewsRepo.create({
       storeId,
+      productId: null,
       userId,
       rating: dto.rating,
       comment: dto.comment ?? null,
@@ -46,7 +55,7 @@ export class ReviewsService {
 
   async listStoreReviews(storeId: string, currentUserId?: string): Promise<ReviewResponseDto[]> {
     const reviews = await this.reviewsRepo.find({
-      where: { storeId, status: 'published' },
+      where: { storeId, productId: IsNull(), status: 'published' },
       relations: ['user', 'user.customerProfile'],
       order: { createdAt: 'DESC' },
     });
@@ -55,7 +64,7 @@ export class ReviewsService {
 
   async getUserReview(storeId: string, userId: string): Promise<ReviewResponseDto | null> {
     const review = await this.reviewsRepo.findOne({
-      where: { storeId, userId, deletedAt: null as any },
+      where: { storeId, productId: IsNull(), userId, deletedAt: null as any },
       relations: ['user', 'user.customerProfile'],
     });
     return review ? this.mapReview(review, userId) : null;
@@ -65,7 +74,7 @@ export class ReviewsService {
     if (role !== 'customer') {
       throw new ForbiddenException('Only customers can delete reviews');
     }
-    const review = await this.reviewsRepo.findOne({ where: { id: reviewId, storeId } });
+    const review = await this.reviewsRepo.findOne({ where: { id: reviewId, storeId, productId: IsNull() } });
     if (!review || review.deletedAt) {
       return { success: true };
     }
@@ -83,6 +92,7 @@ export class ReviewsService {
       .addSelect('COUNT(*)', 'count')
       .where('review.storeId = :storeId', { storeId })
       .andWhere('review.status = :status', { status: 'published' })
+      .andWhere('review.productId IS NULL')
       .groupBy('review.rating')
       .getRawMany<{ rating: number; count: string }>();
 
@@ -103,7 +113,7 @@ export class ReviewsService {
       .addSelect('tag.key', 'key')
       .addSelect('tag.label', 'label')
       .addSelect('COUNT(*)', 'count')
-      .innerJoin('tag.reviews', 'review', 'review.storeId = :storeId AND review.status = :status', {
+      .innerJoin('tag.reviews', 'review', 'review.storeId = :storeId AND review.status = :status AND review.productId IS NULL', {
         storeId,
         status: 'published',
       })
@@ -142,6 +152,7 @@ export class ReviewsService {
       .addSelect('COUNT(*)', 'count')
       .where('review.storeId IN (:...storeIds)', { storeIds: ids })
       .andWhere('review.status = :status', { status: 'published' })
+      .andWhere('review.productId IS NULL')
       .groupBy('review.storeId')
       .addGroupBy('review.rating')
       .getRawMany<{ storeId: string; rating: number; count: string }>();
@@ -152,7 +163,7 @@ export class ReviewsService {
       .addSelect('tag.key', 'key')
       .addSelect('tag.label', 'label')
       .addSelect('COUNT(*)', 'count')
-      .innerJoin('tag.reviews', 'review', 'review.storeId IN (:...storeIds) AND review.status = :status', {
+      .innerJoin('tag.reviews', 'review', 'review.storeId IN (:...storeIds) AND review.status = :status AND review.productId IS NULL', {
         storeIds: ids,
         status: 'published',
       })
@@ -212,6 +223,151 @@ export class ReviewsService {
     return Array.from(summaries.values());
   }
 
+  async createProductReview(productId: string, userId: string, role: string, dto: CreateReviewDto): Promise<ReviewResponseDto> {
+    if (role !== 'customer') {
+      throw new ForbiddenException('Only customers can submit reviews');
+    }
+    const product = await this.productsRepo.findOne({ where: { id: productId, deletedAt: null as any } });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const existing = await this.reviewsRepo.findOne({
+      where: { productId, userId, deletedAt: null as any },
+    });
+    if (existing) {
+      existing.rating = dto.rating;
+      existing.comment = dto.comment ?? null;
+      existing.status = 'published';
+      const saved = await this.reviewsRepo.save(existing);
+      return this.mapReview(saved, userId);
+    }
+
+    const review = this.reviewsRepo.create({
+      storeId: product.storeId,
+      productId,
+      userId,
+      rating: dto.rating,
+      comment: dto.comment ?? null,
+      status: 'published',
+      tags: [], // product reviews do not use tags (yet)
+    });
+    const saved = await this.reviewsRepo.save(review);
+    return this.mapReview(saved, userId);
+  }
+
+  async listProductReviews(productId: string, currentUserId?: string): Promise<ReviewResponseDto[]> {
+    const reviews = await this.reviewsRepo.find({
+      where: { productId, status: 'published' },
+      relations: ['user', 'user.customerProfile'],
+      order: { createdAt: 'DESC' },
+    });
+    return reviews.map((review) => this.mapReview(review, currentUserId));
+  }
+
+  async getUserProductReview(productId: string, userId: string): Promise<ReviewResponseDto | null> {
+    const review = await this.reviewsRepo.findOne({
+      where: { productId, userId, deletedAt: null as any },
+      relations: ['user', 'user.customerProfile'],
+    });
+    return review ? this.mapReview(review, userId) : null;
+  }
+
+  async deleteProductReview(productId: string, reviewId: string, userId: string, role: string): Promise<{ success: true }> {
+    if (role !== 'customer') {
+      throw new ForbiddenException('Only customers can delete reviews');
+    }
+    const review = await this.reviewsRepo.findOne({ where: { id: reviewId, productId } });
+    if (!review || review.deletedAt) {
+      return { success: true };
+    }
+    if (review.userId !== userId) {
+      throw new ForbiddenException('You can only delete your own review');
+    }
+    await this.reviewsRepo.softRemove(review);
+    return { success: true };
+  }
+
+  async getProductReviewSummary(productId: string): Promise<ReviewSummaryDto> {
+    const rows = await this.reviewsRepo
+      .createQueryBuilder('review')
+      .select('review.rating', 'rating')
+      .addSelect('COUNT(*)', 'count')
+      .where('review.productId = :productId', { productId })
+      .andWhere('review.status = :status', { status: 'published' })
+      .groupBy('review.rating')
+      .getRawMany<{ rating: number; count: string }>();
+
+    const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    rows.forEach((row) => {
+      const rating = Number(row.rating);
+      counts[rating] = Number(row.count) || 0;
+    });
+    const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+    const averageRating =
+      total === 0
+        ? 0
+        : Object.entries(counts).reduce((sum, [rating, count]) => sum + Number(rating) * count, 0) / total;
+
+    return {
+      productId,
+      averageRating,
+      total,
+      counts,
+      topTags: [],
+    };
+  }
+
+  async getProductReviewSummaries(productIds: string[]): Promise<ReviewSummaryDto[]> {
+    const ids = Array.from(new Set(productIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
+    if (!ids.length) {
+      return [];
+    }
+
+    const ratingRows = await this.reviewsRepo
+      .createQueryBuilder('review')
+      .select('review.productId', 'productId')
+      .addSelect('review.rating', 'rating')
+      .addSelect('COUNT(*)', 'count')
+      .where('review.productId IN (:...productIds)', { productIds: ids })
+      .andWhere('review.status = :status', { status: 'published' })
+      .groupBy('review.productId')
+      .addGroupBy('review.rating')
+      .getRawMany<{ productId: string; rating: number; count: string }>();
+
+    const summaries = new Map<string, ReviewSummaryDto>();
+    ids.forEach((id) => {
+      summaries.set(id, {
+        productId: id,
+        averageRating: 0,
+        total: 0,
+        counts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+        topTags: [],
+      });
+    });
+
+    ratingRows.forEach((row) => {
+      const summary = summaries.get(row.productId);
+      if (!summary) return;
+      const rating = Number(row.rating);
+      const count = Number(row.count) || 0;
+      if (rating >= 1 && rating <= 5) {
+        summary.counts[rating] = count;
+      }
+    });
+
+    summaries.forEach((summary) => {
+      const total = Object.values(summary.counts).reduce((sum, value) => sum + value, 0);
+      summary.total = total;
+      summary.averageRating =
+        total === 0
+          ? 0
+          : Object.entries(summary.counts).reduce((sum, [rating, count]) => sum + Number(rating) * count, 0) / total;
+    });
+
+    return Array.from(summaries.values());
+  }
+
   private async resolveTags(keys: string[]): Promise<ReviewTag[]> {
     const tags = await this.tagsRepo.find({ where: { key: In(keys) } });
     return tags;
@@ -225,6 +381,8 @@ export class ReviewsService {
       null;
     return {
       id: review.id,
+      storeId: review.storeId,
+      productId: review.productId ?? null,
       rating: review.rating,
       comment: review.comment ?? null,
       tags,

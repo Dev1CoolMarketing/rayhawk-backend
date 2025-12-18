@@ -14,9 +14,11 @@ import {
 import { Store } from './store.entity';
 import { User } from './user.entity';
 import { ReviewTag } from './review-tag.entity';
+import { Product } from './product.entity';
 
 @Entity({ name: 'reviews', schema: 'core' })
-@Index(['storeId', 'userId'], { unique: true, where: '"deleted_at" IS NULL' })
+@Index(['storeId', 'userId'], { unique: true, where: '"deleted_at" IS NULL AND "product_id" IS NULL' })
+@Index(['productId', 'userId'], { unique: true, where: '"deleted_at" IS NULL AND "product_id" IS NOT NULL' })
 export class Review {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -27,6 +29,13 @@ export class Review {
   @ManyToOne(() => Store, (store) => store.reviews, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'store_id' })
   store?: Store;
+
+  @Column({ name: 'product_id', type: 'uuid', nullable: true })
+  productId?: string | null;
+
+  @ManyToOne(() => Product, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'product_id' })
+  product?: Product | null;
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;
