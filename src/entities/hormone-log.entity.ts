@@ -54,6 +54,27 @@ export class HormoneLog {
   @Column({ name: 'mood_notes', type: 'text', nullable: true })
   moodNotes?: string | null;
 
+  @Column({ name: 'erection_strength', type: 'smallint', nullable: true })
+  erectionStrength?: number | null;
+
+  @Column({ name: 'morning_erections', type: 'smallint', nullable: true })
+  morningErections?: number | null;
+
+  @Column({ name: 'libido', type: 'smallint', nullable: true })
+  libido?: number | null;
+
+  @Column({ name: 'sexual_thoughts', type: 'smallint', nullable: true })
+  sexualThoughts?: number | null;
+
+  @Column({ name: 'energy_levels', type: 'smallint', nullable: true })
+  energyLevels?: number | null;
+
+  @Column({ name: 'mood_stability', type: 'smallint', nullable: true })
+  moodStability?: number | null;
+
+  @Column({ name: 'strength_endurance', type: 'smallint', nullable: true })
+  strengthEndurance?: number | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

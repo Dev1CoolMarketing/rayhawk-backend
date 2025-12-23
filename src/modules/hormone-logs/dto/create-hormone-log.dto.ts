@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 import { HormoneFormFactor } from '../../../entities/hormone-log.entity';
 
 export class CreateHormoneLogDto {
@@ -29,4 +29,46 @@ export class CreateHormoneLogDto {
   @IsOptional()
   @IsString()
   moodNotes?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  erectionStrength?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  morningErections?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  libido?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  sexualThoughts?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  energyLevels?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  moodStability?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  strengthEndurance?: number;
 }

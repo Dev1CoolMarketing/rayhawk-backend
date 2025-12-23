@@ -37,6 +37,13 @@ export class HormoneLogsService {
       dateTaken,
       moodScore: dto.moodScore,
       moodNotes: dto.moodNotes?.trim() || null,
+      erectionStrength: dto.erectionStrength ?? null,
+      morningErections: dto.morningErections ?? null,
+      libido: dto.libido ?? null,
+      sexualThoughts: dto.sexualThoughts ?? null,
+      energyLevels: dto.energyLevels ?? null,
+      moodStability: dto.moodStability ?? null,
+      strengthEndurance: dto.strengthEndurance ?? null,
     });
     const saved = await this.logsRepo.save(log);
     return this.mapLog(saved);
@@ -133,6 +140,13 @@ export class HormoneLogsService {
     if (dto.formFactor) log.formFactor = dto.formFactor;
     if (dto.moodScore !== undefined) log.moodScore = dto.moodScore;
     if (dto.moodNotes !== undefined) log.moodNotes = dto.moodNotes?.trim() || null;
+    if (dto.erectionStrength !== undefined) log.erectionStrength = dto.erectionStrength ?? null;
+    if (dto.morningErections !== undefined) log.morningErections = dto.morningErections ?? null;
+    if (dto.libido !== undefined) log.libido = dto.libido ?? null;
+    if (dto.sexualThoughts !== undefined) log.sexualThoughts = dto.sexualThoughts ?? null;
+    if (dto.energyLevels !== undefined) log.energyLevels = dto.energyLevels ?? null;
+    if (dto.moodStability !== undefined) log.moodStability = dto.moodStability ?? null;
+    if (dto.strengthEndurance !== undefined) log.strengthEndurance = dto.strengthEndurance ?? null;
 
     const saved = await this.logsRepo.save(log);
     return this.mapLog(saved);
@@ -162,6 +176,13 @@ export class HormoneLogsService {
       dateTaken: log.dateTaken,
       moodScore: log.moodScore,
       moodNotes: log.moodNotes ?? null,
+      erectionStrength: log.erectionStrength ?? null,
+      morningErections: log.morningErections ?? null,
+      libido: log.libido ?? null,
+      sexualThoughts: log.sexualThoughts ?? null,
+      energyLevels: log.energyLevels ?? null,
+      moodStability: log.moodStability ?? null,
+      strengthEndurance: log.strengthEndurance ?? null,
       createdAt: log.createdAt.toISOString(),
     };
   }

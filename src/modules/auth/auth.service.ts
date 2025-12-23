@@ -90,7 +90,7 @@ export class AuthService {
     return this.mapUserWithVendor(user, activeRole);
   }
 
-  async refresh(refreshToken: string): Promise<TokenResponseDto> {
+  async refresh(refreshToken: string, requestedRole?: AuthAudience): Promise<TokenResponseDto> {
     if (!refreshToken) {
       throw new BadRequestException('Refresh token is required');
     }
@@ -109,15 +109,22 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token has expired');
     }
 
-    const user = storedToken.user;
+    let user = storedToken.user;
     if (!user || user.tokenVersion !== payload.tv) {
       throw new UnauthorizedException('Refresh token no longer valid');
+    }
+    if (requestedRole) {
+      const hydrated = await this.usersService.findById(user.id);
+      if (!hydrated) {
+        throw new UnauthorizedException('Refresh token no longer valid');
+      }
+      user = hydrated;
     }
 
     storedToken.revokedAt = new Date();
     await this.refreshTokenRepo.save(storedToken);
 
-    return this.issueTokens(user);
+    return this.issueTokens(user, { requestedRole: requestedRole ?? null });
   }
 
   async logout(refreshToken: string, userId: string): Promise<{ success: true }> {

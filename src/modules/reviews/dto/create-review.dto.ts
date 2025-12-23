@@ -1,4 +1,4 @@
-import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsArray, IsInt, IsObject, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class CreateReviewDto {
   @IsInt()
@@ -9,6 +9,10 @@ export class CreateReviewDto {
   @IsString()
   @IsOptional()
   comment?: string;
+
+  @IsObject()
+  @IsOptional()
+  criteriaRatings?: Record<string, number>;
 
   @IsArray()
   @IsString({ each: true })
