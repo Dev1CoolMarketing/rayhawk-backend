@@ -27,7 +27,7 @@ export class HormoneLogsService {
     if (!profile) {
       throw new NotFoundException('Customer profile not found');
     }
-    const dateTaken = dto.dateTaken ? new Date(dto.dateTaken).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const dateTaken = dto.dateTaken ? new Date(dto.dateTaken) : new Date();
     const log = this.logsRepo.create({
       customerProfileId: profile.userId,
       testosteroneNgDl: dto.testosteroneLevel,
@@ -132,7 +132,7 @@ export class HormoneLogsService {
     }
 
     if (dto.dateTaken) {
-      log.dateTaken = new Date(dto.dateTaken).toISOString().slice(0, 10);
+      log.dateTaken = new Date(dto.dateTaken);
     }
     if (dto.testosteroneLevel !== undefined) log.testosteroneNgDl = dto.testosteroneLevel;
     if (dto.estradiolLevel !== undefined) log.estradiolPgMl = dto.estradiolLevel;
@@ -173,7 +173,7 @@ export class HormoneLogsService {
       estradiolLevel: Number(log.estradiolPgMl),
       doseMg: Number(log.doseMg),
       formFactor: log.formFactor,
-      dateTaken: log.dateTaken,
+      dateTaken: log.dateTaken.toISOString(),
       moodScore: log.moodScore,
       moodNotes: log.moodNotes ?? null,
       erectionStrength: log.erectionStrength ?? null,
