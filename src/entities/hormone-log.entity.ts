@@ -45,8 +45,8 @@ export class HormoneLog {
   @Column({ name: 'form_factor', type: 'text' })
   formFactor!: HormoneFormFactor;
 
-  @Column({ name: 'date_taken', type: 'date' })
-  dateTaken!: string;
+  @Column({ name: 'date_taken', type: 'timestamptz', default: () => 'now()' })
+  dateTaken!: Date;
 
   @Column({ name: 'mood_score', type: 'smallint' })
   moodScore!: number;
