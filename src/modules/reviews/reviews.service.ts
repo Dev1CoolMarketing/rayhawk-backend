@@ -5,6 +5,9 @@ import { Product, Review, ReviewTag, Store, User } from '../../entities';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { ReviewResponseDto, ReviewSummaryDto } from './dto/review-response.dto';
 
+const STORE_REVIEW_CRITERIA = ['provider_quality', 'communication_responsiveness', 'process_convenience'] as const;
+const PRODUCT_REVIEW_CRITERIA = ['effectiveness', 'stability', 'value'] as const;
+
 @Injectable()
 export class ReviewsService {
   constructor(
@@ -29,15 +32,23 @@ export class ReviewsService {
       relations: ['tags'],
     });
 
+    const hasCriteriaRatings = dto.criteriaRatings !== undefined;
+    const criteriaRatings = hasCriteriaRatings
+      ? this.sanitizeCriteriaRatings(dto.criteriaRatings, STORE_REVIEW_CRITERIA)
+      : existing?.criteriaRatings ?? null;
     const tags = dto.tags?.length ? await this.resolveTags(dto.tags) : [];
 
     if (existing) {
       existing.rating = dto.rating;
       existing.comment = dto.comment ?? null;
+      if (hasCriteriaRatings) {
+        existing.criteriaRatings = criteriaRatings;
+      }
       existing.tags = tags;
       existing.status = 'published';
       const saved = await this.reviewsRepo.save(existing);
-      return this.mapReview(saved, userId);
+      const withUser = await this.loadReviewWithUser(saved.id);
+      return this.mapReview(withUser ?? saved, userId);
     }
 
     const review = this.reviewsRepo.create({
@@ -46,11 +57,13 @@ export class ReviewsService {
       userId,
       rating: dto.rating,
       comment: dto.comment ?? null,
+      criteriaRatings: hasCriteriaRatings ? criteriaRatings : null,
       status: 'published',
       tags,
     });
     const saved = await this.reviewsRepo.save(review);
-    return this.mapReview(saved, userId);
+    const withUser = await this.loadReviewWithUser(saved.id);
+    return this.mapReview(withUser ?? saved, userId);
   }
 
   async listStoreReviews(storeId: string, currentUserId?: string): Promise<ReviewResponseDto[]> {
@@ -232,15 +245,23 @@ export class ReviewsService {
       throw new NotFoundException('Product not found');
     }
 
+    const hasCriteriaRatings = dto.criteriaRatings !== undefined;
+    const criteriaRatings = hasCriteriaRatings
+      ? this.sanitizeCriteriaRatings(dto.criteriaRatings, PRODUCT_REVIEW_CRITERIA)
+      : null;
     const existing = await this.reviewsRepo.findOne({
       where: { productId, userId, deletedAt: null as any },
     });
     if (existing) {
       existing.rating = dto.rating;
       existing.comment = dto.comment ?? null;
+      if (hasCriteriaRatings) {
+        existing.criteriaRatings = criteriaRatings;
+      }
       existing.status = 'published';
       const saved = await this.reviewsRepo.save(existing);
-      return this.mapReview(saved, userId);
+      const withUser = await this.loadReviewWithUser(saved.id);
+      return this.mapReview(withUser ?? saved, userId);
     }
 
     const review = this.reviewsRepo.create({
@@ -249,11 +270,13 @@ export class ReviewsService {
       userId,
       rating: dto.rating,
       comment: dto.comment ?? null,
+      criteriaRatings: hasCriteriaRatings ? criteriaRatings : null,
       status: 'published',
       tags: [], // product reviews do not use tags (yet)
     });
     const saved = await this.reviewsRepo.save(review);
-    return this.mapReview(saved, userId);
+    const withUser = await this.loadReviewWithUser(saved.id);
+    return this.mapReview(withUser ?? saved, userId);
   }
 
   async listProductReviews(productId: string, currentUserId?: string): Promise<ReviewResponseDto[]> {
@@ -368,6 +391,33 @@ export class ReviewsService {
     return Array.from(summaries.values());
   }
 
+  private sanitizeCriteriaRatings(
+    input: Record<string, number> | undefined,
+    allowedKeys: readonly string[],
+  ): Record<string, number> | null {
+    if (!input || typeof input !== 'object') {
+      return null;
+    }
+    const entries = Object.entries(input).filter(
+      ([key, value]) => allowedKeys.includes(key) && Number.isInteger(value) && value >= 1 && value <= 3,
+    );
+    if (!entries.length) {
+      return null;
+    }
+    return entries.reduce<Record<string, number>>((acc, [key, value]) => {
+      acc[key] = Number(value);
+      return acc;
+    }, {});
+  }
+
+  private async loadReviewWithUser(id: string): Promise<Review | undefined> {
+    const review = await this.reviewsRepo.findOne({
+      where: { id },
+      relations: ['user', 'user.customerProfile', 'tags'],
+    });
+    return review ?? undefined;
+  }
+
   private async resolveTags(keys: string[]): Promise<ReviewTag[]> {
     const tags = await this.tagsRepo.find({ where: { key: In(keys) } });
     return tags;
@@ -384,6 +434,7 @@ export class ReviewsService {
       storeId: review.storeId,
       productId: review.productId ?? null,
       rating: review.rating,
+      criteriaRatings: review.criteriaRatings ?? null,
       comment: review.comment ?? null,
       tags,
       username,

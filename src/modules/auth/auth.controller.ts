@@ -69,7 +69,7 @@ export class AuthController {
    */
   @Post('refresh')
   async refresh(@Body() dto: RefreshTokenDto): Promise<TokenResponseDto> {
-    return this.authService.refresh(dto.refreshToken);
+    return this.authService.refresh(dto.refreshToken, dto.role);
   }
 
   /**

@@ -47,6 +47,9 @@ export class Review {
   @Column({ type: 'int' })
   rating!: number;
 
+  @Column({ name: 'criteria_ratings', type: 'jsonb', nullable: true })
+  criteriaRatings?: Record<string, number> | null;
+
   @Column({ type: 'text', nullable: true })
   comment?: string | null;
 

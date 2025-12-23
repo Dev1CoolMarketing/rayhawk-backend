@@ -9,6 +9,13 @@ export interface HormoneLogResponseDto {
   dateTaken: string;
   moodScore: number;
   moodNotes: string | null;
+  erectionStrength: number | null;
+  morningErections: number | null;
+  libido: number | null;
+  sexualThoughts: number | null;
+  energyLevels: number | null;
+  moodStability: number | null;
+  strengthEndurance: number | null;
   createdAt: string;
 }
 

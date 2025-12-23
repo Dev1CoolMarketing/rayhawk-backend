@@ -40,4 +40,5 @@ export interface LoginRequest extends RegisterUserRequest {
 
 export interface RefreshTokenRequest {
   refreshToken: string;
+  role?: AuthAudience;
 }

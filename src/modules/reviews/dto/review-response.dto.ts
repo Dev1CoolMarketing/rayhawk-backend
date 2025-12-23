@@ -3,6 +3,7 @@ export interface ReviewResponseDto {
   storeId: string;
   productId?: string | null;
   rating: number;
+  criteriaRatings: Record<string, number> | null;
   comment: string | null;
   tags: { key: string; label: string }[];
   username: string | null;
