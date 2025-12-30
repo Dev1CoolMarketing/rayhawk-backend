@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { CustomerProfile, FavoriteStore, Store } from '../../entities';
+import type { VitalityTrackingPreferences } from '../../entities/customer-profile.entity';
 import { generateUsername } from './username-generator';
 
 @Injectable()
@@ -42,6 +43,15 @@ export class CustomersService {
       throw new NotFoundException('Customer profile not found');
     }
     return profile;
+  }
+
+  async updateVitalityPreferences(userId: string, preferences: VitalityTrackingPreferences) {
+    const profile = await this.requireProfile(userId);
+    profile.vitalityPreferences = {
+      ...(profile.vitalityPreferences ?? {}),
+      ...preferences,
+    };
+    return this.profilesRepo.save(profile);
   }
 
   async listFavoriteStores(userId: string) {

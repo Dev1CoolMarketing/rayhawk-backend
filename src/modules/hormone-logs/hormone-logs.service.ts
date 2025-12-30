@@ -4,7 +4,7 @@
  * - Endpoints: create log, latest log, list my logs, admin summary aggregates (anonymized).
  * - UI: surface latest + mini history + add form on profile (to be wired in mobile account screen).
  */
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HormoneLog, HormoneFormFactor, CustomerProfile } from '../../entities';
@@ -27,15 +27,53 @@ export class HormoneLogsService {
     if (!profile) {
       throw new NotFoundException('Customer profile not found');
     }
+    const logType = dto.logType ?? 'monthly';
+    if (logType === 'monthly') {
+      const missing: string[] = [];
+      if (dto.testosteroneLevel === undefined) missing.push('testosterone level');
+      if (dto.estradiolLevel === undefined) missing.push('estradiol level');
+      if (dto.doseMg === undefined) missing.push('dose');
+      if (!dto.formFactor) missing.push('form factor');
+      if (dto.moodScore === undefined) missing.push('mood score');
+      if (missing.length) {
+        throw new BadRequestException(`Missing required fields: ${missing.join(', ')}.`);
+      }
+    }
+    if (logType === 'vitality') {
+      const hasVitalityScores = [
+        dto.erectionStrength,
+        dto.morningErections,
+        dto.libido,
+        dto.sexualThoughts,
+        dto.energyLevels,
+        dto.moodStability,
+        dto.strengthEndurance,
+        dto.concentrationSharpness,
+        dto.bodyComposition,
+        dto.sleepQuality,
+      ].some((value) => typeof value === 'number');
+      const hasExtras = [
+        dto.testosteroneLevel,
+        dto.exerciseDurationMinutes,
+        dto.exerciseIntensity,
+        dto.sleepHours,
+        dto.stressLevel,
+        dto.weightLbs,
+      ].some((value) => value !== undefined && value !== null && value !== '');
+      if (!hasVitalityScores && !hasExtras) {
+        throw new BadRequestException('Add at least one vitality score or optional metric before saving.');
+      }
+    }
     const dateTaken = dto.dateTaken ? new Date(dto.dateTaken) : new Date();
     const log = this.logsRepo.create({
       customerProfileId: profile.userId,
-      testosteroneNgDl: dto.testosteroneLevel,
-      estradiolPgMl: dto.estradiolLevel,
-      doseMg: dto.doseMg,
-      formFactor: dto.formFactor,
+      logType,
+      testosteroneNgDl: dto.testosteroneLevel ?? null,
+      estradiolPgMl: dto.estradiolLevel ?? null,
+      doseMg: dto.doseMg ?? null,
+      formFactor: dto.formFactor ?? null,
       dateTaken,
-      moodScore: dto.moodScore,
+      moodScore: dto.moodScore ?? null,
       moodNotes: dto.moodNotes?.trim() || null,
       erectionStrength: dto.erectionStrength ?? null,
       morningErections: dto.morningErections ?? null,
@@ -44,6 +82,14 @@ export class HormoneLogsService {
       energyLevels: dto.energyLevels ?? null,
       moodStability: dto.moodStability ?? null,
       strengthEndurance: dto.strengthEndurance ?? null,
+      concentrationSharpness: dto.concentrationSharpness ?? null,
+      bodyComposition: dto.bodyComposition ?? null,
+      sleepQuality: dto.sleepQuality ?? null,
+      exerciseDurationMinutes: dto.exerciseDurationMinutes ?? null,
+      exerciseIntensity: dto.exerciseIntensity?.trim() || null,
+      sleepHours: dto.sleepHours ?? null,
+      stressLevel: dto.stressLevel ?? null,
+      weightLbs: dto.weightLbs ?? null,
     });
     const saved = await this.logsRepo.save(log);
     return this.mapLog(saved);
@@ -76,7 +122,7 @@ export class HormoneLogsService {
   }
 
   async summary(): Promise<HormoneLogSummaryDto> {
-    const qb = this.logsRepo.createQueryBuilder('log');
+    const qb = this.logsRepo.createQueryBuilder('log').where('log.logType = :logType', { logType: 'monthly' });
     const rows = await qb
       .select('COUNT(*)', 'total')
       .addSelect('AVG(log.testosteroneNgDl)', 'avgTestosterone')
@@ -91,6 +137,7 @@ export class HormoneLogsService {
 
     const byFormFactor = await this.logsRepo
       .createQueryBuilder('log')
+      .where('log.logType = :logType', { logType: 'monthly' })
       .select('log.formFactor', 'formFactor')
       .addSelect('COUNT(*)', 'count')
       .addSelect('AVG(log.testosteroneNgDl)', 'avgTestosterone')
@@ -99,6 +146,7 @@ export class HormoneLogsService {
 
     const byMood = await this.logsRepo
       .createQueryBuilder('log')
+      .where('log.logType = :logType', { logType: 'monthly' })
       .select('log.moodScore', 'moodScore')
       .addSelect('COUNT(*)', 'count')
       .groupBy('log.moodScore')
@@ -134,10 +182,11 @@ export class HormoneLogsService {
     if (dto.dateTaken) {
       log.dateTaken = new Date(dto.dateTaken);
     }
+    if (dto.logType) log.logType = dto.logType;
     if (dto.testosteroneLevel !== undefined) log.testosteroneNgDl = dto.testosteroneLevel;
     if (dto.estradiolLevel !== undefined) log.estradiolPgMl = dto.estradiolLevel;
     if (dto.doseMg !== undefined) log.doseMg = dto.doseMg;
-    if (dto.formFactor) log.formFactor = dto.formFactor;
+    if (dto.formFactor !== undefined) log.formFactor = dto.formFactor ?? null;
     if (dto.moodScore !== undefined) log.moodScore = dto.moodScore;
     if (dto.moodNotes !== undefined) log.moodNotes = dto.moodNotes?.trim() || null;
     if (dto.erectionStrength !== undefined) log.erectionStrength = dto.erectionStrength ?? null;
@@ -147,6 +196,14 @@ export class HormoneLogsService {
     if (dto.energyLevels !== undefined) log.energyLevels = dto.energyLevels ?? null;
     if (dto.moodStability !== undefined) log.moodStability = dto.moodStability ?? null;
     if (dto.strengthEndurance !== undefined) log.strengthEndurance = dto.strengthEndurance ?? null;
+    if (dto.concentrationSharpness !== undefined) log.concentrationSharpness = dto.concentrationSharpness ?? null;
+    if (dto.bodyComposition !== undefined) log.bodyComposition = dto.bodyComposition ?? null;
+    if (dto.sleepQuality !== undefined) log.sleepQuality = dto.sleepQuality ?? null;
+    if (dto.exerciseDurationMinutes !== undefined) log.exerciseDurationMinutes = dto.exerciseDurationMinutes ?? null;
+    if (dto.exerciseIntensity !== undefined) log.exerciseIntensity = dto.exerciseIntensity?.trim() || null;
+    if (dto.sleepHours !== undefined) log.sleepHours = dto.sleepHours ?? null;
+    if (dto.stressLevel !== undefined) log.stressLevel = dto.stressLevel ?? null;
+    if (dto.weightLbs !== undefined) log.weightLbs = dto.weightLbs ?? null;
 
     const saved = await this.logsRepo.save(log);
     return this.mapLog(saved);
@@ -167,14 +224,16 @@ export class HormoneLogsService {
   }
 
   private mapLog(log: HormoneLog): HormoneLogResponseDto {
+    const toNullableNumber = (value?: number | null) => (value === null || value === undefined ? null : Number(value));
     return {
       id: log.id,
-      testosteroneLevel: Number(log.testosteroneNgDl),
-      estradiolLevel: Number(log.estradiolPgMl),
-      doseMg: Number(log.doseMg),
-      formFactor: log.formFactor,
+      logType: log.logType ?? 'monthly',
+      testosteroneLevel: toNullableNumber(log.testosteroneNgDl),
+      estradiolLevel: toNullableNumber(log.estradiolPgMl),
+      doseMg: toNullableNumber(log.doseMg),
+      formFactor: log.formFactor ?? null,
       dateTaken: log.dateTaken.toISOString(),
-      moodScore: log.moodScore,
+      moodScore: log.moodScore ?? null,
       moodNotes: log.moodNotes ?? null,
       erectionStrength: log.erectionStrength ?? null,
       morningErections: log.morningErections ?? null,
@@ -183,6 +242,14 @@ export class HormoneLogsService {
       energyLevels: log.energyLevels ?? null,
       moodStability: log.moodStability ?? null,
       strengthEndurance: log.strengthEndurance ?? null,
+      concentrationSharpness: log.concentrationSharpness ?? null,
+      bodyComposition: log.bodyComposition ?? null,
+      sleepQuality: log.sleepQuality ?? null,
+      exerciseDurationMinutes: log.exerciseDurationMinutes ?? null,
+      exerciseIntensity: log.exerciseIntensity ?? null,
+      sleepHours: toNullableNumber(log.sleepHours),
+      stressLevel: log.stressLevel ?? null,
+      weightLbs: toNullableNumber(log.weightLbs),
       createdAt: log.createdAt.toISOString(),
     };
   }
