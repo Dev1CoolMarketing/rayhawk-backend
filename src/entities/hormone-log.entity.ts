@@ -20,6 +20,8 @@ export type HormoneFormFactor =
   | 'nasal'
   | 'other';
 
+export type HormoneLogType = 'monthly' | 'vitality';
+
 @Entity({ name: 'hormone_logs', schema: 'core' })
 @Index('IDX_hormone_logs_profile_date', ['customerProfileId', 'dateTaken'])
 export class HormoneLog {
@@ -33,23 +35,26 @@ export class HormoneLog {
   @JoinColumn({ name: 'customer_profile_id', referencedColumnName: 'userId' })
   customerProfile?: CustomerProfile;
 
-  @Column({ name: 'testosterone_ng_dl', type: 'numeric', precision: 10, scale: 2 })
-  testosteroneNgDl!: number;
+  @Column({ name: 'log_type', type: 'text', default: 'monthly' })
+  logType!: HormoneLogType;
 
-  @Column({ name: 'estradiol_pg_ml', type: 'numeric', precision: 10, scale: 2 })
-  estradiolPgMl!: number;
+  @Column({ name: 'testosterone_ng_dl', type: 'numeric', precision: 10, scale: 2, nullable: true })
+  testosteroneNgDl?: number | null;
 
-  @Column({ name: 'dose_mg', type: 'numeric', precision: 10, scale: 2 })
-  doseMg!: number;
+  @Column({ name: 'estradiol_pg_ml', type: 'numeric', precision: 10, scale: 2, nullable: true })
+  estradiolPgMl?: number | null;
 
-  @Column({ name: 'form_factor', type: 'text' })
-  formFactor!: HormoneFormFactor;
+  @Column({ name: 'dose_mg', type: 'numeric', precision: 10, scale: 2, nullable: true })
+  doseMg?: number | null;
+
+  @Column({ name: 'form_factor', type: 'text', nullable: true })
+  formFactor?: HormoneFormFactor | null;
 
   @Column({ name: 'date_taken', type: 'timestamptz', default: () => 'now()' })
   dateTaken!: Date;
 
-  @Column({ name: 'mood_score', type: 'smallint' })
-  moodScore!: number;
+  @Column({ name: 'mood_score', type: 'smallint', nullable: true })
+  moodScore?: number | null;
 
   @Column({ name: 'mood_notes', type: 'text', nullable: true })
   moodNotes?: string | null;
@@ -74,6 +79,30 @@ export class HormoneLog {
 
   @Column({ name: 'strength_endurance', type: 'smallint', nullable: true })
   strengthEndurance?: number | null;
+
+  @Column({ name: 'concentration_sharpness', type: 'smallint', nullable: true })
+  concentrationSharpness?: number | null;
+
+  @Column({ name: 'body_composition', type: 'smallint', nullable: true })
+  bodyComposition?: number | null;
+
+  @Column({ name: 'sleep_quality', type: 'smallint', nullable: true })
+  sleepQuality?: number | null;
+
+  @Column({ name: 'exercise_duration_minutes', type: 'int', nullable: true })
+  exerciseDurationMinutes?: number | null;
+
+  @Column({ name: 'exercise_intensity', type: 'text', nullable: true })
+  exerciseIntensity?: string | null;
+
+  @Column({ name: 'sleep_hours', type: 'numeric', precision: 4, scale: 1, nullable: true })
+  sleepHours?: number | null;
+
+  @Column({ name: 'stress_level', type: 'smallint', nullable: true })
+  stressLevel?: number | null;
+
+  @Column({ name: 'weight_lbs', type: 'numeric', precision: 6, scale: 1, nullable: true })
+  weightLbs?: number | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

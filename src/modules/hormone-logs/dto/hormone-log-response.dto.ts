@@ -1,13 +1,14 @@
-import { HormoneFormFactor } from '../../../entities/hormone-log.entity';
+import { HormoneFormFactor, HormoneLogType } from '../../../entities/hormone-log.entity';
 
 export interface HormoneLogResponseDto {
   id: string;
-  testosteroneLevel: number;
-  estradiolLevel: number;
-  doseMg: number;
-  formFactor: HormoneFormFactor;
+  logType: HormoneLogType;
+  testosteroneLevel: number | null;
+  estradiolLevel: number | null;
+  doseMg: number | null;
+  formFactor: HormoneFormFactor | null;
   dateTaken: string;
-  moodScore: number;
+  moodScore: number | null;
   moodNotes: string | null;
   erectionStrength: number | null;
   morningErections: number | null;
@@ -16,6 +17,14 @@ export interface HormoneLogResponseDto {
   energyLevels: number | null;
   moodStability: number | null;
   strengthEndurance: number | null;
+  concentrationSharpness: number | null;
+  bodyComposition: number | null;
+  sleepQuality: number | null;
+  exerciseDurationMinutes: number | null;
+  exerciseIntensity: string | null;
+  sleepHours: number | null;
+  stressLevel: number | null;
+  weightLbs: number | null;
   createdAt: string;
 }
 
