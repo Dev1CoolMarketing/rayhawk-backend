@@ -7,6 +7,9 @@ import { ReviewResponseDto, ReviewSummaryDto } from './dto/review-response.dto';
 
 const STORE_REVIEW_CRITERIA = ['provider_quality', 'communication_responsiveness', 'process_convenience'] as const;
 const PRODUCT_REVIEW_CRITERIA = ['effectiveness', 'stability', 'value'] as const;
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const isUuid = (value: string) => UUID_REGEX.test(value);
 
 @Injectable()
 export class ReviewsService {
@@ -153,7 +156,11 @@ export class ReviewsService {
   }
 
   async getStoreReviewSummaries(storeIds: string[]): Promise<ReviewSummaryDto[]> {
-    const ids = Array.from(new Set(storeIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
+    const ids = Array.from(
+      new Set(
+        storeIds.filter((id) => typeof id === 'string' && id.trim().length > 0 && isUuid(id)),
+      ),
+    );
     if (!ids.length) {
       return [];
     }
@@ -342,7 +349,11 @@ export class ReviewsService {
   }
 
   async getProductReviewSummaries(productIds: string[]): Promise<ReviewSummaryDto[]> {
-    const ids = Array.from(new Set(productIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
+    const ids = Array.from(
+      new Set(
+        productIds.filter((id) => typeof id === 'string' && id.trim().length > 0 && isUuid(id)),
+      ),
+    );
     if (!ids.length) {
       return [];
     }

@@ -67,6 +67,12 @@ export class Store {
   @Column({ name: 'opening_hours', type: 'jsonb', nullable: true })
   openingHours?: string[] | null;
 
+  @Column({ name: 'opening_hours_weekly', type: 'jsonb', nullable: true })
+  openingHoursWeekly?: Record<string, { start: number; end: number }[]> | null;
+
+  @Column({ type: 'text', default: 'America/Los_Angeles' })
+  timezone!: string;
+
   @Column({ type: 'double precision', nullable: true })
   latitude?: number | null;
 
@@ -81,6 +87,8 @@ export class Store {
     asExpression:
       "CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography END",
     generatedType: 'STORED',
+    insert: false,
+    update: false,
   })
   coordinates?: string | null;
 

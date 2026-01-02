@@ -1,4 +1,13 @@
-import { IsArray, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsIn, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+
+const US_TIMEZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+] as const;
 
 export class CreateStoreDto {
   @IsString()
@@ -45,6 +54,15 @@ export class CreateStoreDto {
   @IsString({ each: true })
   @IsOptional()
   openingHours?: string[];
+
+  @IsObject()
+  @IsOptional()
+  openingHoursWeekly?: Record<string, { start: number; end: number }[]>;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(US_TIMEZONES)
+  timezone?: string;
 
   @IsNumber()
   @IsOptional()
