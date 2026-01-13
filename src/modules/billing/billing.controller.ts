@@ -16,6 +16,8 @@ import { resolveSeatPriceId, resolveStorePriceId, resolveStripeSecrets } from '.
 import { Response } from 'express';
 import { UpdateStoreQuantityDto } from './dto/update-store-quantity.dto';
 import { UpdateCollectionMethodDto } from './dto/update-collection-method.dto';
+import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
+import { SchedulePlanChangeDto } from './dto/schedule-plan-change.dto';
 
 @ApiTags('Billing')
 @ApiBearerAuth()
@@ -130,6 +132,10 @@ export class BillingController {
     if (!vendor) {
       throw new BadRequestException('Vendor account not found');
     }
+    const entitlements = await this.billingService.getVendorEntitlements(vendor.id);
+    if (!entitlements?.planKey || entitlements.planKey === 'free') {
+      throw new BadRequestException('Seat add-ons require a Bronze plan or higher.');
+    }
 
     const seatPriceId = resolveSeatPriceId(this.config);
     if (!seatPriceId) {
@@ -218,6 +224,60 @@ export class BillingController {
       vendorId: vendor.id,
       collectionMethod: dto.collectionMethod,
       daysUntilDue: dto.daysUntilDue,
+    });
+  }
+
+  @Post('portal')
+  @UseGuards(JwtAuthGuard)
+  async createPortalSession(@User() user: RequestUser) {
+    if (!this.stripe) {
+      throw new BadRequestException('Stripe is not configured');
+    }
+    const vendor = await this.vendorsRepo.findOne({ where: { ownerId: user.id } });
+    if (!vendor) {
+      throw new BadRequestException('Vendor account not found');
+    }
+    const customer = await this.billingService.ensureStripeCustomer(this.stripe, {
+      vendorId: vendor.id,
+      email: user.email,
+      billingName: vendor.name ?? undefined,
+    });
+    const session = await this.stripe.billingPortal.sessions.create({
+      customer: customer.stripeCustomerId,
+      return_url: `${this.frontendUrl}/dashboard/plan`,
+    });
+    return { url: session.url };
+  }
+
+  @Post('cancel')
+  @UseGuards(JwtAuthGuard)
+  async cancelSubscription(@Body() dto: CancelSubscriptionDto, @User() user: RequestUser) {
+    if (!this.stripe) {
+      throw new BadRequestException('Stripe is not configured');
+    }
+    const vendor = await this.vendorsRepo.findOne({ where: { ownerId: user.id } });
+    if (!vendor) {
+      throw new BadRequestException('Vendor account not found');
+    }
+    return this.billingService.cancelSubscription(this.stripe, {
+      vendorId: vendor.id,
+      cancelAtPeriodEnd: true,
+    });
+  }
+
+  @Post('schedule-plan-change')
+  @UseGuards(JwtAuthGuard)
+  async schedulePlanChange(@Body() dto: SchedulePlanChangeDto, @User() user: RequestUser) {
+    if (!this.stripe) {
+      throw new BadRequestException('Stripe is not configured');
+    }
+    const vendor = await this.vendorsRepo.findOne({ where: { ownerId: user.id } });
+    if (!vendor) {
+      throw new BadRequestException('Vendor account not found');
+    }
+    return this.billingService.schedulePlanChange(this.stripe, {
+      vendorId: vendor.id,
+      planKey: dto.planKey,
     });
   }
 
