@@ -34,7 +34,7 @@ export const DEFAULT_VENDOR_PLANS: VendorPlanSeed[] = [
     interval: 'month',
     currency: 'usd',
     unitAmountCents: 0,
-    stripePriceId: 'price_local_vendor_free',
+    stripePriceId: '',
     stripeProductId: 'prod_local_vendor_free',
     seatsIncluded: 1,
     maxStores: 1,

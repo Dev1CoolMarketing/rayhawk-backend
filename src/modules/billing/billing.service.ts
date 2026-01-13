@@ -84,6 +84,9 @@ export class BillingService {
     });
     const planKey = (subscription?.plan?.key as VendorPlanKey | undefined) ?? 'free';
     const requestedQuantity = Math.max(0, params.quantity);
+    if (planKey === 'free' && requestedQuantity > 0) {
+      throw new BadRequestException('Store add-ons require a Bronze plan or higher.');
+    }
 
     // Handle removing store add-ons (quantity 0) without creating new Stripe subscriptions
     if (requestedQuantity === 0) {
@@ -121,11 +124,15 @@ export class BillingService {
         expand: ['items'],
       });
       const existingItem = stripeSub.items?.data.find((item) => item.price?.id === storePriceId) ?? null;
+      const currentQuantity = existingItem?.quantity ?? 0;
+      if (stripeSub.cancel_at_period_end && requestedQuantity !== currentQuantity) {
+        throw new BadRequestException('Subscription is set to cancel at period end; store add-ons cannot be changed.');
+      }
 
       if (existingItem) {
         const updated = await stripe.subscriptions.update(stripeSub.id, {
           items: [{ id: existingItem.id, deleted: true }],
-          proration_behavior: 'create_prorations',
+          proration_behavior: 'none',
           payment_behavior: 'pending_if_incomplete',
           expand: ['latest_invoice.payment_intent'],
         });
@@ -256,9 +263,14 @@ export class BillingService {
     }
 
     const existingItem = stripeSub.items?.data.find((item) => item.price?.id === storePriceId) ?? null;
+    const currentQuantity = existingItem?.quantity ?? 0;
+    if (stripeSub.cancel_at_period_end && requestedQuantity !== currentQuantity) {
+      throw new BadRequestException('Subscription is set to cancel at period end; store add-ons cannot be changed.');
+    }
+    const isIncrease = requestedQuantity > currentQuantity;
 
     const updateParams: Stripe.SubscriptionUpdateParams = {
-      proration_behavior: 'create_prorations',
+      proration_behavior: isIncrease ? 'create_prorations' : 'none',
       payment_behavior: 'pending_if_incomplete',
       items: existingItem
         ? [
@@ -362,6 +374,151 @@ export class BillingService {
 
     return this.getBillingSummary(stripe, { vendorId: params.vendorId });
   }
+
+  async cancelSubscription(
+    stripe: Stripe,
+    params: { vendorId: string; cancelAtPeriodEnd?: boolean },
+  ) {
+    const subscription = await this.subscriptionsRepo.findOne({
+      where: { vendorId: params.vendorId },
+      relations: ['plan'],
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!subscription) {
+      return { hasSubscription: false };
+    }
+
+    if (subscription.stripeSubscriptionId.startsWith('manual_')) {
+      subscription.status = 'canceled';
+      subscription.cancelAtPeriodEnd = false;
+      subscription.canceledAt = new Date();
+      await this.subscriptionsRepo.save(subscription);
+      return this.getBillingSummary(stripe, { vendorId: params.vendorId });
+    }
+
+    const cancelAtPeriodEnd = true;
+    const updated = cancelAtPeriodEnd
+      ? await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+          cancel_at_period_end: true,
+        })
+      : await stripe.subscriptions.cancel(subscription.stripeSubscriptionId);
+
+    const priceId =
+      updated.items?.data?.[0]?.price?.id ??
+      subscription.stripePriceId ??
+      '';
+
+    const synced = await this.syncSubscriptionFromStripe({
+      vendorId: params.vendorId,
+      stripeSubscriptionId: updated.id,
+      stripeCustomerId: (updated.customer as string) ?? null,
+      stripePriceId: priceId,
+      status: updated.status as BillingSubscriptionStatus,
+      currentPeriodStart: this.unixToDate(updated.current_period_start),
+      currentPeriodEnd: this.unixToDate(updated.current_period_end),
+      cancelAtPeriodEnd: updated.cancel_at_period_end ?? false,
+      canceledAt: this.unixToDate(updated.canceled_at),
+      trialEnd: this.unixToDate(updated.trial_end),
+      quantity: updated.items?.data?.[0]?.quantity ?? 1,
+      planKey: subscription.plan?.key ?? null,
+      collectionMethod: updated.collection_method ?? null,
+    });
+
+    if (synced?.id) {
+      await this.syncSubscriptionItemsFromStripe({
+        vendorId: params.vendorId,
+        billingSubscriptionId: synced.id,
+        items: updated.items,
+      });
+    }
+
+    return this.getBillingSummary(stripe, { vendorId: params.vendorId });
+  }
+
+  async schedulePlanChange(
+    stripe: Stripe,
+    params: { vendorId: string; planKey: VendorPlanKey },
+  ) {
+    const plan = await this.findPlanByKey(params.planKey);
+    if (!plan || !plan.stripePriceId) {
+      throw new BadRequestException('Plan is not available for scheduled changes.');
+    }
+
+    const subscription = await this.subscriptionsRepo.findOne({
+      where: { vendorId: params.vendorId },
+      relations: ['plan'],
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!subscription || subscription.stripeSubscriptionId.startsWith('manual_')) {
+      throw new BadRequestException('No active Stripe subscription found to schedule.');
+    }
+
+    const stripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId, {
+      expand: ['items.data.price'],
+    });
+
+    if (!stripeSub.current_period_start || !stripeSub.current_period_end) {
+      throw new BadRequestException('Unable to determine the current billing period.');
+    }
+
+    if (stripeSub.cancel_at_period_end) {
+      await stripe.subscriptions.update(stripeSub.id, { cancel_at_period_end: false });
+    }
+
+    const storePriceId = resolveStorePriceId(this.config);
+    const seatPriceId = resolveSeatPriceId(this.config);
+    const currentItems =
+      stripeSub.items?.data
+        .map((item) => ({
+          price: item.price?.id ?? null,
+          quantity: item.quantity ?? 1,
+        }))
+        .filter((item): item is { price: string; quantity: number } => Boolean(item.price)) ?? [];
+
+    const planItemPriceId =
+      subscription.stripePriceId ||
+      currentItems.find(
+        (item) => item.price !== storePriceId && item.price !== seatPriceId,
+      )?.price ||
+      null;
+
+    const nextItems = currentItems.map((item) =>
+      planItemPriceId && item.price === planItemPriceId
+        ? { price: plan.stripePriceId, quantity: item.quantity }
+        : item,
+    );
+
+    if (!nextItems.some((item) => item.price === plan.stripePriceId)) {
+      nextItems.push({ price: plan.stripePriceId, quantity: 1 });
+    }
+
+    const scheduleId =
+      typeof stripeSub.schedule === 'string' ? stripeSub.schedule : stripeSub.schedule?.id ?? null;
+    const schedule = scheduleId
+      ? await stripe.subscriptionSchedules.retrieve(scheduleId)
+      : await stripe.subscriptionSchedules.create({ from_subscription: stripeSub.id });
+
+    await stripe.subscriptionSchedules.update(schedule.id, {
+      proration_behavior: 'none',
+      end_behavior: 'release',
+      phases: [
+        {
+          start_date: stripeSub.current_period_start,
+          end_date: stripeSub.current_period_end,
+          items: currentItems,
+        },
+        {
+          start_date: stripeSub.current_period_end,
+          items: nextItems,
+        },
+      ],
+    });
+
+    return this.getBillingSummary(stripe, { vendorId: params.vendorId });
+  }
+
   async getBillingSummary(stripe: Stripe, params: { vendorId: string }) {
     const subscription = await this.subscriptionsRepo.findOne({
       where: { vendorId: params.vendorId },
@@ -382,6 +539,10 @@ export class BillingService {
         currency: 'usd',
         currentPeriodEnd: subscription.currentPeriodEnd ?? null,
         collectionMethod: subscription.collectionMethod ?? null,
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd ?? false,
+        canceledAt: subscription.canceledAt ?? null,
+        defaultPaymentMethod: null,
+        latestInvoice: null,
         items: [],
         totals: {
           currentTotalCents: 0,
@@ -397,16 +558,48 @@ export class BillingService {
     });
 
     const latestInvoice = stripeSub.latest_invoice as Stripe.Invoice | null;
+    const stripeCustomerId =
+      typeof stripeSub.customer === 'string' ? stripeSub.customer : stripeSub.customer?.id ?? null;
+    let defaultPaymentMethod: Stripe.PaymentMethod | null = null;
+    if (stripeCustomerId) {
+      try {
+        const customer = await stripe.customers.retrieve(stripeCustomerId, {
+          expand: ['invoice_settings.default_payment_method'],
+        });
+        if (!('deleted' in customer)) {
+          const invoiceMethod = customer.invoice_settings?.default_payment_method;
+          if (invoiceMethod && typeof invoiceMethod !== 'string') {
+            defaultPaymentMethod = invoiceMethod as Stripe.PaymentMethod;
+          }
+        }
+      } catch {
+        // ignore missing or inaccessible payment method
+      }
+    }
+    if (!defaultPaymentMethod && stripeSub.default_payment_method) {
+      const defaultId =
+        typeof stripeSub.default_payment_method === 'string'
+          ? stripeSub.default_payment_method
+          : stripeSub.default_payment_method.id;
+      try {
+        defaultPaymentMethod = await stripe.paymentMethods.retrieve(defaultId);
+      } catch {
+        // ignore missing payment method
+      }
+    }
+    const card = defaultPaymentMethod?.card;
     let upcoming: Stripe.Invoice | null = null;
-    try {
-      const upcomingResponse = await stripe.invoices.retrieveUpcoming({
-        subscription: stripeSub.id,
-        customer: (stripeSub.customer as string) ?? undefined,
-      });
-      // For upcoming invoices, Stripe returns a specific type; coerce to Invoice shape we consume
-      upcoming = upcomingResponse as unknown as Stripe.Invoice;
-    } catch (error) {
-      // ignore missing upcoming invoice (e.g., canceled or free)
+    if (!stripeSub.cancel_at_period_end) {
+      try {
+        const upcomingResponse = await stripe.invoices.retrieveUpcoming({
+          subscription: stripeSub.id,
+          customer: (stripeSub.customer as string) ?? undefined,
+        });
+        // For upcoming invoices, Stripe returns a specific type; coerce to Invoice shape we consume
+        upcoming = upcomingResponse as unknown as Stripe.Invoice;
+      } catch (error) {
+        // ignore missing upcoming invoice (e.g., canceled or free)
+      }
     }
 
     const items =
@@ -440,6 +633,9 @@ export class BillingService {
       : upcoming?.created
         ? new Date(upcoming.created * 1000)
         : null;
+    const latestInvoicePaidAt = latestInvoice?.status_transitions?.paid_at
+      ? new Date(latestInvoice.status_transitions.paid_at * 1000)
+      : null;
 
     return {
       hasSubscription: true,
@@ -449,6 +645,25 @@ export class BillingService {
       currency: stripeSub.currency ?? 'usd',
       currentPeriodEnd: stripeSub.current_period_end ? new Date(stripeSub.current_period_end * 1000) : null,
       collectionMethod: stripeSub.collection_method ?? null,
+      cancelAtPeriodEnd: stripeSub.cancel_at_period_end ?? false,
+      canceledAt: stripeSub.canceled_at ? new Date(stripeSub.canceled_at * 1000) : null,
+      defaultPaymentMethod: card
+        ? {
+            brand: card.brand ?? null,
+            last4: card.last4 ?? null,
+            expMonth: card.exp_month ?? null,
+            expYear: card.exp_year ?? null,
+          }
+        : null,
+      latestInvoice: latestInvoice
+        ? {
+            id: latestInvoice.id ?? null,
+            status: latestInvoice.status ?? null,
+            amountPaidCents: latestInvoice.amount_paid ?? null,
+            amountDueCents: latestInvoice.amount_due ?? null,
+            paidAt: latestInvoicePaidAt,
+          }
+        : null,
       items,
       totals: {
         currentTotalCents,
