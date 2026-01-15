@@ -1,9 +1,10 @@
 import { UserRole } from '../modules/auth/types/auth.types';
-import { Column, CreateDateColumn, Entity, OneToMany, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, OneToMany, OneToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 import { RefreshToken } from './refresh-token.entity';
 import { CustomerProfile } from './customer-profile.entity';
 
 @Entity({ name: 'users' })
+@Index('UQ_users_auth_provider_subject', ['authProvider', 'authSubject'], { unique: true })
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -13,6 +14,12 @@ export class User {
 
   @Column({ name: 'password_hash' })
   passwordHash!: string;
+
+  @Column({ name: 'auth_provider', type: 'text', default: 'local' })
+  authProvider!: string;
+
+  @Column({ name: 'auth_subject', type: 'text', nullable: true })
+  authSubject?: string | null;
 
   @Column({ name: 'first_name', type: 'text', nullable: true })
   firstName?: string | null;

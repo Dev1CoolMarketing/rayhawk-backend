@@ -1,6 +1,6 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { ProductsService } from './products.service';
 
 @ApiTags('Product Categories')
@@ -10,7 +10,7 @@ export class ProductCategoriesController {
 
   @Get()
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   list() {
     return this.productsService.listCategories();
   }

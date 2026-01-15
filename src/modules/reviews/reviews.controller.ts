@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { CreateReviewDto } from './dto/create-review.dto';
@@ -22,7 +22,7 @@ export class ReviewsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   @Get('me')
   getMyReview(@Param('storeId', new ParseUUIDPipe()) storeId: string, @User() user: RequestUser) {
     return this.reviewsService.getUserReview(storeId, user.id);
@@ -30,7 +30,7 @@ export class ReviewsController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   createReview(
     @Param('storeId', new ParseUUIDPipe()) storeId: string,
     @Body() dto: CreateReviewDto,
@@ -41,7 +41,7 @@ export class ReviewsController {
 
   @Delete(':reviewId')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   deleteReview(
     @Param('storeId', new ParseUUIDPipe()) storeId: string,
     @Param('reviewId', new ParseUUIDPipe()) reviewId: string,
@@ -67,7 +67,7 @@ export class ProductReviewsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   @Get('me')
   getMyProductReview(@Param('productId', new ParseUUIDPipe()) productId: string, @User() user: RequestUser) {
     return this.reviewsService.getUserProductReview(productId, user.id);
@@ -75,7 +75,7 @@ export class ProductReviewsController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   createProductReview(
     @Param('productId', new ParseUUIDPipe()) productId: string,
     @Body() dto: CreateReviewDto,
@@ -86,7 +86,7 @@ export class ProductReviewsController {
 
   @Delete(':reviewId')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   deleteProductReview(
     @Param('productId', new ParseUUIDPipe()) productId: string,
     @Param('reviewId', new ParseUUIDPipe()) reviewId: string,

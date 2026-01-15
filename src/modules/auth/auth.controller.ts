@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { User as CurrentUser } from '../../common/decorators/user.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User as UserEntity } from '../../entities';
 import { AuthService } from './auth.service';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -55,7 +55,7 @@ export class AuthController {
    * Errors: 401 if the access token is missing/invalid.
    */
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   @Get('me')
   async me(@CurrentUser() user: RequestUser) {
     return this.authService.getCurrentUser(user.id, user.role);
@@ -79,7 +79,7 @@ export class AuthController {
    * Side effects: provided refresh token gets revoked immediately so it cannot be reused.
    */
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   @Post('logout')
   async logout(@CurrentUser() user: RequestUser, @Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto.refreshToken, user.id);

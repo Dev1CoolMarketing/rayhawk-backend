@@ -6,7 +6,7 @@ import Stripe from 'stripe';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../../common/decorators/user.decorator';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { Vendor } from '../../entities';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { CheckoutDto, CheckoutMode } from './dto/checkout.dto';
@@ -45,7 +45,7 @@ export class BillingController {
   }
 
   @Post('checkout')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   async checkout(@Body() dto: CheckoutDto, @User() user: RequestUser) {
     if (!this.stripe) {
       return { url: `${this.appUrl}/billing/configure-stripe` };
@@ -122,7 +122,7 @@ export class BillingController {
   }
 
   @Post('seats/intent')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   async createSeatSubscriptionIntent(@Body() dto: SeatsCheckoutDto, @User() user: RequestUser) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not configured');
@@ -179,7 +179,7 @@ export class BillingController {
   }
 
   @Post('stores/quantity')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   async updateStoreQuantity(@Body() dto: UpdateStoreQuantityDto, @User() user: RequestUser) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not configured');
@@ -198,7 +198,7 @@ export class BillingController {
   }
 
   @Get('summary')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   async summary(@User() user: RequestUser) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not configured');
@@ -211,7 +211,7 @@ export class BillingController {
   }
 
   @Post('collection-method')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   async updateCollectionMethod(@Body() dto: UpdateCollectionMethodDto, @User() user: RequestUser) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not configured');
@@ -228,7 +228,7 @@ export class BillingController {
   }
 
   @Post('portal')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   async createPortalSession(@User() user: RequestUser) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not configured');
@@ -250,7 +250,7 @@ export class BillingController {
   }
 
   @Post('cancel')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   async cancelSubscription(@Body() dto: CancelSubscriptionDto, @User() user: RequestUser) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not configured');
@@ -266,7 +266,7 @@ export class BillingController {
   }
 
   @Post('schedule-plan-change')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   async schedulePlanChange(@Body() dto: SchedulePlanChangeDto, @User() user: RequestUser) {
     if (!this.stripe) {
       throw new BadRequestException('Stripe is not configured');

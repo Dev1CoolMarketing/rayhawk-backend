@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { CompleteOnboardingDto } from './dto/complete-onboarding.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
@@ -11,7 +11,7 @@ import { UploadImageDto } from '../../common/dto/upload-image.dto';
 
 @ApiTags('Vendors')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(ApiAuthGuard)
 @Controller('vendors')
 export class VendorsController {
   constructor(private readonly vendorsService: VendorsService) {}
@@ -33,21 +33,21 @@ export class VendorsController {
 
   @Get('me')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   getMyVendor(@User() user: RequestUser) {
     return this.vendorsService.getVendorProfile(user.id);
   }
 
   @Post('me')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   updateVendor(@Body() dto: UpdateVendorDto, @User() user: RequestUser) {
     return this.vendorsService.updateVendorProfile(user.id, dto);
   }
 
   @Patch('me/image')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   uploadVendorImage(@Body() dto: UploadImageDto, @User() user: RequestUser) {
     return this.vendorsService.uploadVendorImage(user.id, dto);
   }

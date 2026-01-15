@@ -1,6 +1,6 @@
 # Rayhawk Backend
 
-NestJS REST API with Supabase-authenticated JWTs, Postgres schemas that mirror Supabase conventions, Redis-powered BullMQ workers, optional Stripe billing, and lightweight cron hooks.
+NestJS REST API with Supabase-compatible JWT support, Postgres schemas that mirror Supabase conventions, Redis-powered BullMQ workers, optional Stripe billing, and lightweight cron hooks.
 
 ## Requirements
 - Node.js 20+
@@ -16,11 +16,16 @@ NestJS REST API with Supabase-authenticated JWTs, Postgres schemas that mirror S
 6. (Optional) Enable the pg_cron schedule by executing `sql/05_pgcron_schedule.sql` once the API is reachable and replace the `x-internal-token` header with your `INTERNAL_JOBS_TOKEN`.
 
 ## Architecture Notes
-- **Auth**: `SupabaseAuthGuard` verifies RS256 JWTs via the Supabase JWKS endpoint and injects `req.user { id, email, role }`. Use the `@User()` decorator inside controllers.
+- **Auth**: `ApiAuthGuard` accepts either local JWTs or Supabase-issued JWTs (via JWKS). Supabase subjects are linked to local profiles by email on first sign-in and stored as `auth_provider/auth_subject` on `users`. Use the `@User()` decorator inside controllers.
 - **Database**: TypeORM models target local Postgres schemas `core` and `api`, matching Supabase naming. Run the SQL files to create tables, views, RLS policies, and sample pg_cron schedule.
 - **Queues**: BullMQ (Redis) exposes `EMAIL` and `REPORTS` queues. The reports queue wires a scheduler + worker stub and powers the `/v1/cron/enqueue-daily` endpoint (guarded by `x-internal-token`).
 - **Billing & Webhooks**: Stripe checkout is optional—if secrets are empty the endpoint returns a placeholder URL. Webhooks expect the raw request body; configure `STRIPE_WEBHOOK_SECRET` to enable signature validation.
 - **Docs**: Swagger (+ bearer auth) lives at `/v1/docs`. Global prefix `/v1`, global validation pipe (whitelist/transform), logging interceptor, and HTTP exception filter are enabled in `main.ts`.
+
+## Supabase Auth Bridge
+- Configure `SUPABASE_URL` + `SUPABASE_JWKS_URL` (optional: `SUPABASE_JWT_ISSUER`, `SUPABASE_JWT_AUDIENCE`).
+- Supabase JWTs are accepted by the API; on first request the backend links by email or creates a local profile.
+- For role-sensitive endpoints, you can send `x-auth-role: customer|vendor|admin|user` to select an allowed role.
 
 ## Docker Services
 - **postgres**: Based on `supabase/postgres` to include `pg_cron` and `http` extensions. Mounts `./sql` to bootstrap schemas.

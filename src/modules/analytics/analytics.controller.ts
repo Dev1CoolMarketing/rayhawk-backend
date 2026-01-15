@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards, Ht
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { createHash } from 'crypto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { AnalyticsService } from './analytics.service';
@@ -57,7 +57,7 @@ export class AnalyticsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   @Get('stores/:storeId/summary')
   async storeSummary(
     @Param('storeId') storeId: string,
@@ -71,7 +71,7 @@ export class AnalyticsController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   @Get('stores/:storeId/products')
   async storeProducts(
     @Param('storeId') storeId: string,

@@ -11,7 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { CustomersService } from './customers.service';
@@ -20,7 +20,7 @@ import { UpdateVitalityPreferencesDto } from './dto/update-vitality-preferences.
 
 @ApiTags('Customers')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(ApiAuthGuard)
 @Controller('customers')
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}

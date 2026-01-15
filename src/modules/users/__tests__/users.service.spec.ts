@@ -56,6 +56,8 @@ describe('UsersService', () => {
       email: 'test@example.com',
       passwordHash: 'hash',
       role: 'user',
+      authProvider: 'local',
+      authSubject: null,
     });
     expect(repo.save).toHaveBeenCalledWith(created);
     expect(result.id).toEqual('user-1');

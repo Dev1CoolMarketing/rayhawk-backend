@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, NotFoundException, Patch, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User as CurrentUser } from '../../common/decorators/user.decorator';
 import { UsersService } from './users.service';
 import { MediaService } from '../media/media.service';
@@ -9,7 +9,7 @@ import { RequestUser } from '../auth/types/request-user.interface';
 
 @ApiTags('Users')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(ApiAuthGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService, private readonly media: MediaService) {}

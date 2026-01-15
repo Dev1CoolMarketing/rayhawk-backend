@@ -2,7 +2,7 @@ import { Body, Controller, Post, UnauthorizedException, UseGuards } from '@nestj
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 
@@ -15,7 +15,7 @@ type SignUploadRequest = {
 
 @ApiTags('Media')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(ApiAuthGuard)
 @Controller('uploads')
 export class MediaController {
   constructor(private readonly config: ConfigService) {}

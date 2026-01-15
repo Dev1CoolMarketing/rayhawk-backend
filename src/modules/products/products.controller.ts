@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -28,7 +28,7 @@ export class ProductsController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   createProduct(
     @Param('storeId', new ParseUUIDPipe()) storeId: string,
     @Body() dto: CreateProductDto,
@@ -39,7 +39,7 @@ export class ProductsController {
 
   @Patch(':productId')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   updateProduct(
     @Param('storeId', new ParseUUIDPipe()) storeId: string,
     @Param('productId', new ParseUUIDPipe()) productId: string,
@@ -51,7 +51,7 @@ export class ProductsController {
 
   @Patch(':productId/image')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   updateProductImage(
     @Param('storeId', new ParseUUIDPipe()) storeId: string,
     @Param('productId', new ParseUUIDPipe()) productId: string,
@@ -63,7 +63,7 @@ export class ProductsController {
 
   @Delete(':productId')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   deleteProduct(
     @Param('storeId', new ParseUUIDPipe()) storeId: string,
     @Param('productId', new ParseUUIDPipe()) productId: string,

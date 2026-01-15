@@ -1,6 +1,6 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { CreateStoreDto } from './dto/create-store.dto';
@@ -28,7 +28,7 @@ export class StoresController {
 
   @Get('me')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   getMyStores(@User() user: RequestUser) {
     return this.storesService.findMine(user.id);
   }
@@ -40,14 +40,14 @@ export class StoresController {
 
   @Post()
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   createStore(@Body() dto: CreateStoreDto, @User() user: RequestUser) {
     return this.storesService.create(dto, user.id);
   }
 
   @Patch(':id')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   updateStore(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateStoreDto,
@@ -58,7 +58,7 @@ export class StoresController {
 
   @Patch(':id/image')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   updateStoreImage(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: LinkImageDto,
@@ -69,7 +69,7 @@ export class StoresController {
 
   @Delete(':id')
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ApiAuthGuard)
   deleteStore(@Param('id', new ParseUUIDPipe()) id: string, @User() user: RequestUser) {
     return this.storesService.remove(id, user.id);
   }

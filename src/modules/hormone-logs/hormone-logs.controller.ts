@@ -14,7 +14,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiAuthGuard } from '../../common/guards/api-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { HormoneLogsService } from './hormone-logs.service';
@@ -23,7 +23,7 @@ import { UpdateHormoneLogDto } from './dto/update-hormone-log.dto';
 
 @ApiTags('HormoneLogs')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(ApiAuthGuard)
 @Controller('hormone-logs')
 export class HormoneLogsController {
   constructor(private readonly hormoneLogsService: HormoneLogsService) {}
