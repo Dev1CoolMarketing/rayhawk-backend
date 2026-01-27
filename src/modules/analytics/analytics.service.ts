@@ -1,41 +1,52 @@
 import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-
 import { AnalyticsEvent, Product, Store } from '../../entities';
-import { AnalyticsEventType, CreateAnalyticsEventDto } from './dto/create-analytics-event.dto';
+import { CreateAnalyticsEventDto, AnalyticsEventType } from './dto/create-analytics-event.dto';
 import { AnalyticsGroupBy } from './dto/analytics-query.dto';
 
-interface StoreSummaryParams {
-  storeId: string;
-  ownerId: string;
-  from?: Date;
-  to?: Date;
-  group?: AnalyticsGroupBy;
-}
+type SeriesPoint = {
+  period: string;
+  pageViews: number;
+  clickThroughs: number;
+  productViews: number;
+};
 
-interface ProductBreakdownParams {
+type Summary = {
   storeId: string;
-  ownerId: string;
-  from?: Date;
-  to?: Date;
-}
+  from: string;
+  to: string;
+  group: AnalyticsGroupBy;
+  totals: {
+    pageViews: number;
+    clickThroughs: number;
+    productViews: number;
+  };
+  series: SeriesPoint[];
+};
+
+export type ProductBreakdown = {
+  productId: string;
+  productName: string | null;
+  productViews: number;
+  clickThroughs: number;
+  clickThroughRate: number;
+};
 
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
 
   constructor(
-    @InjectRepository(AnalyticsEvent)
-    private readonly eventsRepo: Repository<AnalyticsEvent>,
-    @InjectRepository(Store)
-    private readonly storesRepo: Repository<Store>,
-    @InjectRepository(Product)
-    private readonly productsRepo: Repository<Product>,
+    @InjectRepository(AnalyticsEvent) private readonly eventsRepo: Repository<AnalyticsEvent>,
+    @InjectRepository(Store) private readonly storesRepo: Repository<Store>,
+    @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
   ) {}
 
   async recordEvent(dto: CreateAnalyticsEventDto, ipHash?: string | null) {
-    this.logger.log(`Record analytics event type=${dto.type} storeId=${dto.storeId} productId=${dto.productId ?? 'none'}`);
+    this.logger.log(
+      `Record analytics event type=${dto.type} storeId=${dto.storeId} productId=${dto.productId ?? 'none'}`,
+    );
     const store = await this.storesRepo.findOne({ where: { id: dto.storeId } });
     if (!store) {
       this.logger.warn(`Analytics event rejected: store not found. storeId=${dto.storeId}`);
@@ -53,16 +64,19 @@ export class AnalyticsService {
       ipHash: ipHash ?? null,
       metadata: dto.metadata ?? null,
     });
-
     return this.eventsRepo.save(event);
   }
 
-  async getStoreSummary(params: StoreSummaryParams) {
+  async getStoreSummary(params: {
+    storeId: string;
+    ownerId: string;
+    from?: Date;
+    to?: Date;
+    group?: AnalyticsGroupBy;
+  }): Promise<Summary> {
     const store = await this.storesRepo.findOne({ where: { id: params.storeId }, relations: ['vendor'] });
     if (!store) {
-      this.logger.warn(
-        `Store not found for analytics summary. storeId=${params.storeId}, ownerId=${params.ownerId}`,
-      );
+      this.logger.warn(`Store not found for analytics summary. storeId=${params.storeId}, ownerId=${params.ownerId}`);
       throw new NotFoundException('Store not found');
     }
     if (!store.vendor || store.vendor.ownerId !== params.ownerId) {
@@ -79,7 +93,10 @@ export class AnalyticsService {
     const totals = await this.eventsRepo
       .createQueryBuilder('event')
       .select(`SUM(CASE WHEN event.type = :pv THEN 1 ELSE 0 END)`, 'pageViews')
-      .addSelect(`SUM(CASE WHEN event.type IN (:...ctTypes) THEN 1 ELSE 0 END)`, 'clickThroughs')
+      .addSelect(
+        `SUM(CASE WHEN event.type IN (:...ctTypes) THEN 1 ELSE 0 END)`,
+        'clickThroughs',
+      )
       .addSelect(`SUM(CASE WHEN event.type = :prd THEN 1 ELSE 0 END)`, 'productViews')
       .where('event.storeId = :storeId', { storeId: params.storeId })
       .andWhere('event.occurredAt BETWEEN :from AND :to', { from, to })
@@ -94,7 +111,10 @@ export class AnalyticsService {
       .createQueryBuilder('event')
       .select(`date_trunc(:bucket, event.occurredAt)`, 'period')
       .addSelect(`SUM(CASE WHEN event.type = :pv THEN 1 ELSE 0 END)`, 'pageViews')
-      .addSelect(`SUM(CASE WHEN event.type IN (:...ctTypes) THEN 1 ELSE 0 END)`, 'clickThroughs')
+      .addSelect(
+        `SUM(CASE WHEN event.type IN (:...ctTypes) THEN 1 ELSE 0 END)`,
+        'clickThroughs',
+      )
       .addSelect(`SUM(CASE WHEN event.type = :prd THEN 1 ELSE 0 END)`, 'productViews')
       .where('event.storeId = :storeId', { storeId: params.storeId })
       .andWhere('event.occurredAt BETWEEN :from AND :to', { from, to })
@@ -106,17 +126,14 @@ export class AnalyticsService {
       })
       .groupBy('period')
       .orderBy('period', 'ASC')
-      .getRawMany();
+      .getRawMany<{ period: Date; pageViews: string; clickThroughs: string; productViews: string }>();
 
-    const series = seriesRaw.map((row: { period: Date | string; pageViews: string; clickThroughs: string; productViews: string }) => {
-      const period = row.period instanceof Date ? row.period : new Date(row.period);
-      return {
-        period: period.toISOString(),
-        pageViews: Number(row.pageViews) || 0,
-        clickThroughs: Number(row.clickThroughs) || 0,
-        productViews: Number(row.productViews) || 0,
-      };
-    });
+    const series: SeriesPoint[] = seriesRaw.map((row) => ({
+      period: row.period.toISOString(),
+      pageViews: Number(row.pageViews) || 0,
+      clickThroughs: Number(row.clickThroughs) || 0,
+      productViews: Number(row.productViews) || 0,
+    }));
 
     return {
       storeId: params.storeId,
@@ -132,12 +149,15 @@ export class AnalyticsService {
     };
   }
 
-  async getProductBreakdown(params: ProductBreakdownParams) {
+  async getProductBreakdown(params: {
+    storeId: string;
+    ownerId: string;
+    from?: Date;
+    to?: Date;
+  }): Promise<ProductBreakdown[]> {
     const store = await this.storesRepo.findOne({ where: { id: params.storeId }, relations: ['vendor'] });
     if (!store) {
-      this.logger.warn(
-        `Store not found for analytics products. storeId=${params.storeId}, ownerId=${params.ownerId}`,
-      );
+      this.logger.warn(`Store not found for analytics products. storeId=${params.storeId}, ownerId=${params.ownerId}`);
       throw new NotFoundException('Store not found');
     }
     if (!store.vendor || store.vendor.ownerId !== params.ownerId) {
@@ -164,9 +184,9 @@ export class AnalyticsService {
       })
       .groupBy('event.productId')
       .orderBy('productViews', 'DESC')
-      .getRawMany();
+      .getRawMany<{ productId: string; productViews: string; clickThroughs: string }>();
 
-    const productIds = rows.map((row: { productId: string }) => row.productId).filter(Boolean);
+    const productIds = rows.map((r) => r.productId).filter(Boolean);
     const products = productIds.length
       ? await this.productsRepo
           .createQueryBuilder('product')
@@ -174,10 +194,9 @@ export class AnalyticsService {
           .andWhere('product.deleted_at IS NULL')
           .getMany()
       : [];
+    const nameById = new Map(products.map((p) => [p.id, p.name]));
 
-    const nameById = new Map(products.map((product) => [product.id, product.name]));
-
-    return rows.map((row: { productId: string; productViews: string; clickThroughs: string }) => ({
+    return rows.map((row) => ({
       productId: row.productId,
       productName: nameById.get(row.productId) ?? null,
       productViews: Number(row.productViews) || 0,

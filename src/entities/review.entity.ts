@@ -11,21 +11,14 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-
-import { Product } from './product.entity';
-import { ReviewTag } from './review-tag.entity';
 import { Store } from './store.entity';
 import { User } from './user.entity';
+import { ReviewTag } from './review-tag.entity';
+import { Product } from './product.entity';
 
 @Entity({ name: 'reviews', schema: 'core' })
-@Index(['storeId', 'userId'], {
-  unique: true,
-  where: '"deleted_at" IS NULL AND "product_id" IS NULL',
-})
-@Index(['productId', 'userId'], {
-  unique: true,
-  where: '"deleted_at" IS NULL AND "product_id" IS NOT NULL',
-})
+@Index(['storeId', 'userId'], { unique: true, where: '"deleted_at" IS NULL AND "product_id" IS NULL' })
+@Index(['productId', 'userId'], { unique: true, where: '"deleted_at" IS NULL AND "product_id" IS NOT NULL' })
 export class Review {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
@@ -42,7 +35,7 @@ export class Review {
 
   @ManyToOne(() => Product, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'product_id' })
-  product?: Product;
+  product?: Product | null;
 
   @Column({ name: 'user_id', type: 'uuid' })
   userId!: string;

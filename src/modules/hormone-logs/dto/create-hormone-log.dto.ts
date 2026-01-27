@@ -1,9 +1,10 @@
 import { IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { HormoneFormFactor, HormoneLogType } from '../../../entities/hormone-log.entity';
 
 export class CreateHormoneLogDto {
   @IsOptional()
   @IsIn(['monthly', 'vitality'])
-  logType?: 'monthly' | 'vitality';
+  logType?: HormoneLogType;
 
   @IsOptional()
   @IsNumber()
@@ -19,7 +20,7 @@ export class CreateHormoneLogDto {
 
   @IsOptional()
   @IsIn(['injection', 'gel', 'cream', 'oral', 'patch', 'pellet', 'nasal', 'other'])
-  formFactor?: string;
+  formFactor?: HormoneFormFactor;
 
   @IsOptional()
   @IsDateString()

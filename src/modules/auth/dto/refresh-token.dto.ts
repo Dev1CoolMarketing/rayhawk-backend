@@ -1,4 +1,4 @@
-import { RefreshTokenRequest } from '../types/auth.types';
+import { RefreshTokenRequest, AuthAudience } from '../types/auth.types';
 import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RefreshTokenDto implements RefreshTokenRequest {
@@ -8,5 +8,5 @@ export class RefreshTokenDto implements RefreshTokenRequest {
 
   @IsOptional()
   @IsIn(['vendor', 'customer'])
-  role?: 'vendor' | 'customer';
+  role?: AuthAudience;
 }

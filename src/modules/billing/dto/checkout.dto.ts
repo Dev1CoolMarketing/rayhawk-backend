@@ -17,6 +17,11 @@ export class CheckoutDto {
   @IsOptional()
   @IsNumber()
   @IsPositive()
+  quantity?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
   amount?: number;
 
   @IsOptional()

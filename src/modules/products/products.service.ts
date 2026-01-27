@@ -1,30 +1,43 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository } from 'typeorm';
-import { Product, Store } from '../../entities';
+import { In, IsNull, Repository } from 'typeorm';
+import { Product, ProductCategory, Store } from '../../entities';
 import { CreateProductDto } from './dto/create-product.dto';
 import { MediaService } from '../media/media.service';
 import { LinkImageDto } from '../../common/dto/link-image.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
+import { BillingService } from '../billing/billing.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class ProductsService {
   constructor(
     @InjectRepository(Product) private readonly productsRepository: Repository<Product>,
+    @InjectRepository(ProductCategory) private readonly categoriesRepository: Repository<ProductCategory>,
     @InjectRepository(Store) private readonly storesRepository: Repository<Store>,
     private readonly media: MediaService,
+    private readonly billingService: BillingService,
   ) {}
 
   findByStore(storeId: string) {
     return this.productsRepository.find({
       where: { storeId, status: 'active', deletedAt: IsNull() },
-      order: { createdAt: 'DESC' },
+      order: { featured: 'DESC', createdAt: 'DESC' },
+      relations: ['categories'],
+    });
+  }
+
+  listCategories() {
+    return this.categoriesRepository.find({
+      where: { deletedAt: IsNull() },
+      order: { label: 'ASC' },
     });
   }
 
   async findOne(storeId: string, productId: string) {
     const product = await this.productsRepository.findOne({
       where: { id: productId, storeId, deletedAt: IsNull() },
+      relations: ['categories'],
     });
     if (!product) {
       throw new NotFoundException('Product not found');
@@ -43,22 +56,45 @@ export class ProductsService {
     if (!store.vendor || store.vendor.ownerId !== requesterId) {
       throw new ForbiddenException('You do not have permission to manage this store');
     }
+
+    const entitlements = await this.billingService.getVendorEntitlements(store.vendorId);
+    if (!entitlements || !entitlements.isActive) {
+      throw new ForbiddenException('Billing subscription is not active');
+    }
+    if (entitlements.productsPerStoreAllowed !== null && entitlements.productsPerStoreAllowed >= 0) {
+      const productCount = await this.productsRepository.count({
+        where: { storeId, status: 'active', deletedAt: IsNull() },
+      });
+      if (productCount >= entitlements.productsPerStoreAllowed) {
+        throw new ForbiddenException('Product limit reached for current plan');
+      }
+    }
+
+    const categories = dto.categories?.length ? await this.resolveCategories(dto.categories) : [];
+    const billing = this.computeBilling(dto.billingType, dto.billingInterval, dto.billingQuantity);
+    const slug = this.slugify(dto.slug ?? dto.name);
+
     const product = this.productsRepository.create({
       ...dto,
       status: dto.status ?? 'active',
       linkUrl: dto.linkUrl ?? null,
-      billingType: dto.billingType ?? 'one_time',
-      billingInterval: dto.billingInterval ?? null,
-      billingQuantity: dto.billingQuantity ?? null,
+      bulletPoints: dto.bulletPoints?.filter((b) => b && b.trim().length > 0) ?? null,
+      featured: dto.featured ?? false,
+      storeId,
+      categories,
       unitCount: dto.unitCount ?? null,
       unitCountType: dto.unitCountType ?? null,
       formFactor: dto.formFactor ?? null,
-      bulletPoints: dto.bulletPoints ?? null,
-      featured: dto.featured ?? false,
-      categories: dto.categories ? dto.categories.map((key) => ({ key, label: key })) : null,
-      storeId,
+      billingType: billing.billingType,
+      billingInterval: billing.billingInterval,
+      billingQuantity: billing.billingQuantity,
+      slug,
     });
-    return this.productsRepository.save(product);
+    try {
+      return await this.productsRepository.save(product);
+    } catch (error) {
+      this.handleSlugCollision(error);
+    }
   }
 
   async updateImage(storeId: string, productId: string, ownerId: string, image: LinkImageDto) {
@@ -89,6 +125,7 @@ export class ProductsService {
     if (!product.store?.vendor || product.store.vendor.ownerId !== ownerId) {
       throw new ForbiddenException('You do not have permission to update this product');
     }
+    const entitlements = await this.billingService.getVendorEntitlements(product.store.vendorId);
     if (dto.name !== undefined) {
       product.name = dto.name;
     }
@@ -99,19 +136,37 @@ export class ProductsService {
       product.priceCents = dto.priceCents;
     }
     if (dto.status !== undefined) {
+      if (dto.status === 'active' && (!entitlements || !entitlements.isActive)) {
+        throw new ForbiddenException('Billing subscription is not active');
+      }
+      if (
+        dto.status === 'active' &&
+        product.status !== 'active' &&
+        entitlements &&
+        entitlements.productsPerStoreAllowed !== null &&
+        entitlements.productsPerStoreAllowed !== undefined &&
+        entitlements.productsPerStoreAllowed >= 0
+      ) {
+        const activeCount = await this.productsRepository.count({
+          where: { storeId, status: 'active', deletedAt: IsNull() },
+        });
+        if (activeCount >= entitlements.productsPerStoreAllowed) {
+          throw new ForbiddenException('Product limit reached for current plan');
+        }
+      }
       product.status = dto.status;
+    }
+    if (dto.slug !== undefined) {
+      product.slug = this.slugify(dto.slug || product.name);
     }
     if (dto.linkUrl !== undefined) {
       product.linkUrl = dto.linkUrl ?? null;
     }
     if (dto.bulletPoints !== undefined) {
-      product.bulletPoints = dto.bulletPoints ?? null;
-    }
-    if (dto.featured !== undefined) {
-      product.featured = dto.featured;
+      product.bulletPoints = dto.bulletPoints?.filter((b) => b && b.trim().length > 0) ?? null;
     }
     if (dto.unitCount !== undefined) {
-      product.unitCount = dto.unitCount ?? null;
+      product.unitCount = dto.unitCount;
     }
     if (dto.unitCountType !== undefined) {
       product.unitCountType = dto.unitCountType ?? null;
@@ -119,19 +174,23 @@ export class ProductsService {
     if (dto.formFactor !== undefined) {
       product.formFactor = dto.formFactor ?? null;
     }
-    if (dto.billingType !== undefined) {
-      product.billingType = dto.billingType ?? null;
+    if (dto.featured !== undefined) {
+      product.featured = dto.featured;
     }
-    if (dto.billingInterval !== undefined) {
-      product.billingInterval = dto.billingInterval ?? null;
-    }
-    if (dto.billingQuantity !== undefined) {
-      product.billingQuantity = dto.billingQuantity ?? null;
+    if (dto.billingType !== undefined || dto.billingInterval !== undefined || dto.billingQuantity !== undefined) {
+      const billing = this.computeBilling(dto.billingType, dto.billingInterval, dto.billingQuantity, product);
+      product.billingType = billing.billingType;
+      product.billingInterval = billing.billingInterval;
+      product.billingQuantity = billing.billingQuantity;
     }
     if (dto.categories !== undefined) {
-      product.categories = dto.categories ? dto.categories.map((key) => ({ key, label: key })) : null;
+      product.categories = dto.categories?.length ? await this.resolveCategories(dto.categories) : [];
     }
-    return this.productsRepository.save(product);
+    try {
+      return await this.productsRepository.save(product);
+    } catch (error) {
+      this.handleSlugCollision(error);
+    }
   }
 
   async remove(storeId: string, productId: string, ownerId: string) {
@@ -147,5 +206,60 @@ export class ProductsService {
     }
     await this.media.deleteImage(product.imagePublicId, product.imageUrl);
     return this.productsRepository.softRemove(product);
+  }
+
+  private computeBilling(
+    billingType?: string,
+    billingInterval?: string,
+    billingQuantity?: number,
+    existing?: { billingType: 'one_time' | 'recurring'; billingInterval?: 'month' | 'year' | null; billingQuantity?: number },
+  ) {
+    const type = (billingType ?? existing?.billingType ?? 'one_time') as 'one_time' | 'recurring';
+    const quantity = billingQuantity ?? existing?.billingQuantity ?? 1;
+    const interval =
+      type === 'recurring'
+        ? ((billingInterval ?? existing?.billingInterval ?? null) as 'month' | 'year' | null)
+        : null;
+
+    if (type === 'recurring' && !interval) {
+      throw new BadRequestException('billingInterval is required when billingType is recurring');
+    }
+
+    return {
+      billingType: type,
+      billingInterval: interval,
+      billingQuantity: quantity,
+    };
+  }
+
+  private async resolveCategories(keys: string[]): Promise<ProductCategory[]> {
+    if (!keys.length) return [];
+    const categories = await this.categoriesRepository.find({
+      where: { key: In(keys), deletedAt: IsNull() },
+    });
+    if (categories.length !== keys.length) {
+      throw new NotFoundException('One or more categories were not found or are inactive');
+    }
+    return categories;
+  }
+
+  private slugify(input: string) {
+    const base = input
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 200);
+    const suffix = randomUUID().slice(0, 8);
+    return base ? `${base}-${suffix}` : suffix;
+  }
+
+  private handleSlugCollision(error: unknown): never {
+    const isQueryError = error instanceof Error && (error as any).driverError;
+    const code = isQueryError ? (error as any).driverError?.code : null;
+    const constraint = isQueryError ? (error as any).driverError?.constraint : null;
+    if (code === '23505' && constraint?.includes('products_store_slug_active_idx')) {
+      throw new BadRequestException('Product slug already in use for this store. Try a different slug.');
+    }
+    throw error;
   }
 }

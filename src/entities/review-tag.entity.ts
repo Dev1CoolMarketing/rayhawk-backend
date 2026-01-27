@@ -1,12 +1,4 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  ManyToMany,
-  PrimaryGeneratedColumn,
-  Unique,
-} from 'typeorm';
-
+import { Column, CreateDateColumn, Entity, ManyToMany, PrimaryGeneratedColumn, Unique } from 'typeorm';
 import { Review } from './review.entity';
 
 @Entity({ name: 'review_tags', schema: 'core' })

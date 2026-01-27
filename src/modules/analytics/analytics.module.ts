@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-
-import { AnalyticsEvent, Product, Store } from '../../entities';
+import { AnalyticsEvent, Store, Product } from '../../entities';
 import { AnalyticsController } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 

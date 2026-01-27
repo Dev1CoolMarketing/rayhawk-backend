@@ -5,7 +5,8 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch",
+    "dev": "rimraf dist tsconfig.build.tsbuildinfo && nest start --watch",
+    "start:debug": "nest start --debug --watch",
     "build": "nest build",
     "start": "node dist/main.js",
     "start:prod": "NODE_ENV=production node dist/main.js",
@@ -17,7 +18,8 @@
     "docker:logs": "docker compose logs -f api",
     "migrations:run": "typeorm-ts-node-commonjs migration:run -d typeorm.config.ts",
     "migrations:revert": "typeorm-ts-node-commonjs migration:revert -d typeorm.config.ts",
-    "migrations:generate": "typeorm-ts-node-commonjs migration:generate src/migrations/$npm_config_name -d typeorm.config.ts"
+    "migrations:generate": "typeorm-ts-node-commonjs migration:generate src/migrations/$npm_config_name -d typeorm.config.ts",
+    "backfill:coords": "ts-node scripts/backfillCoordinates.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.2",
@@ -36,6 +38,8 @@
     "dotenv": "^16.4.5",
     "ioredis": "^5.4.1",
     "jose": "^5.9.3",
+    "nodemailer": "^6.9.13",
+    "@types/nodemailer": "^6.4.13",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",

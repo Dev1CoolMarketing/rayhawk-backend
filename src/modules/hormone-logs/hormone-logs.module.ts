@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-
-import { CustomerProfile, HormoneLog } from '../../entities';
+import { HormoneLog, CustomerProfile } from '../../entities';
 import { HormoneLogsController } from './hormone-logs.controller';
 import { HormoneLogsService } from './hormone-logs.service';
 

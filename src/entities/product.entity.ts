@@ -4,11 +4,15 @@ import {
   DeleteDateColumn,
   Entity,
   JoinColumn,
+  JoinTable,
   ManyToOne,
+  ManyToMany,
   PrimaryGeneratedColumn,
+  Index,
   UpdateDateColumn,
 } from 'typeorm';
 import { Store } from './store.entity';
+import { ProductCategory } from './product-category.entity';
 
 @Entity({ name: 'products', schema: 'core' })
 export class Product {
@@ -25,17 +29,15 @@ export class Product {
   @Column({ type: 'text' })
   name!: string;
 
+  @Index('products_store_slug_active_idx', { unique: true, where: '"deleted_at" IS NULL' })
+  @Column({ type: 'text' })
+  slug!: string;
+
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
   @Column({ name: 'price_cents', type: 'integer' })
   priceCents!: number;
-
-  @Column({ name: 'bullet_points', type: 'jsonb', nullable: true })
-  bulletPoints?: string[] | null;
-
-  @Column({ type: 'boolean', default: false })
-  featured!: boolean;
 
   @Column({ name: 'unit_count', type: 'integer', nullable: true })
   unitCount?: number | null;
@@ -46,17 +48,18 @@ export class Product {
   @Column({ name: 'form_factor', type: 'text', nullable: true })
   formFactor?: string | null;
 
-  @Column({ name: 'billing_type', type: 'text', nullable: true })
-  billingType?: string | null;
+  @Column({
+    name: 'billing_type',
+    type: 'text',
+    default: 'one_time',
+  })
+  billingType!: 'one_time' | 'recurring';
 
   @Column({ name: 'billing_interval', type: 'text', nullable: true })
-  billingInterval?: string | null;
+  billingInterval?: 'month' | 'year' | null;
 
-  @Column({ name: 'billing_quantity', type: 'integer', nullable: true })
-  billingQuantity?: number | null;
-
-  @Column({ type: 'jsonb', nullable: true })
-  categories?: { key: string; label: string }[] | null;
+  @Column({ name: 'billing_quantity', type: 'integer', default: 1 })
+  billingQuantity!: number;
 
   @Column({ type: 'text', default: 'active' })
   status!: string;
@@ -69,6 +72,20 @@ export class Product {
 
   @Column({ name: 'link_url', type: 'text', nullable: true })
   linkUrl?: string | null;
+
+  @Column({ name: 'bullet_points', type: 'text', array: true, nullable: true })
+  bulletPoints?: string[] | null;
+
+  @Column({ name: 'featured', type: 'boolean', default: false })
+  featured!: boolean;
+
+  @ManyToMany(() => ProductCategory, (category) => category.products, { eager: true })
+  @JoinTable({
+    name: 'product_category_links',
+    joinColumn: { name: 'product_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'category_id', referencedColumnName: 'id' },
+  })
+  categories?: ProductCategory[];
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

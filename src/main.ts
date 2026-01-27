@@ -2,7 +2,7 @@ import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'body-parser';
-import type { NextFunction, Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -12,28 +12,61 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
 
-  app.enableCors();
-  app.use(json());
-  app.use(urlencoded({ extended: true }));
+  const corsOrigins =
+    configService
+      .get<string>('CORS_ORIGINS')
+      ?.split(',')
+      .map((value) => value.trim())
+      .filter(Boolean) ?? [];
+  const fallbackOrigins = [
+    configService.get<string>('FRONTEND_APP_URL'),
+    configService.get<string>('FRONTEND_VENDOR_APP_URL'),
+    'http://localhost:3000',
+    // Allow Expo web dev server during development only
+    process.env.NODE_ENV !== 'production' ? 'http://localhost:8081' : null,
+  ].filter(Boolean) as string[];
+  const originList = corsOrigins.length ? corsOrigins : fallbackOrigins;
+
+  app.enableCors({
+    origin: originList.length ? originList : false,
+    credentials: true,
+  });
+
+  const stripeWebhookPath = '/v1/webhooks/stripe';
+  // Stripe needs raw body for signature verification; register before other parsers.
+  app.use(
+    stripeWebhookPath,
+    json({
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+      limit: '1mb',
+      type: '*/*',
+    }),
+  );
+  // For non-Stripe routes, keep normal parsers.
   app.use((req: Request, res: Response, next: NextFunction) => {
-    const started = Date.now();
-    const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
-    const authScheme = authHeader.split(' ')[0] ?? '';
-    const hasBearer = authScheme.toLowerCase() === 'bearer';
-    const token = hasBearer ? authHeader.slice(authScheme.length + 1).trim() : '';
-    const tokenLength = token.length;
-    const shouldLogToken = req.originalUrl.includes('/customers/me/profile') || req.originalUrl.includes('/auth/me');
-    const tokenPreview = shouldLogToken && tokenLength ? `${token.slice(0, 8)}...${token.slice(-4)}` : '';
-    res.on('finish', () => {
-      const duration = Date.now() - started;
-      // eslint-disable-next-line no-console
-      console.log(
-        `[HTTP] ${req.method} ${req.originalUrl} -> ${res.statusCode} (${duration}ms) auth=${
-          hasBearer ? 'bearer' : authHeader ? 'other' : 'none'
-        } tokenLen=${tokenLength}${tokenPreview ? ` token=${tokenPreview}` : ''}`,
-      );
-    });
-    next();
+    if (req.originalUrl.startsWith(stripeWebhookPath)) {
+      return next();
+    }
+    return json({ limit: '10mb' })(req, res, next);
+  });
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.originalUrl.startsWith(stripeWebhookPath)) {
+      return next();
+    }
+    return urlencoded({ extended: true, limit: '10mb' })(req, res, next);
+  });
+
+  // Friendly handler for oversized payloads
+  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+    if (err?.type === 'entity.too.large') {
+      return res.status(413).json({
+        statusCode: 413,
+        message: 'Upload too large. Please limit uploads to 10MB.',
+      });
+    }
+    return next(err);
   });
 
   app.setGlobalPrefix('v1');
@@ -46,29 +79,10 @@ async function bootstrap() {
   );
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());
-
-  // Ensure raw body is preserved for Stripe webhooks while still parsing JSON elsewhere.
-  app.use(
-    '/v1/webhooks/stripe',
-    json({
-      verify: (req: any, _res, buf) => {
-        req.rawBody = buf;
-      },
-      limit: '1mb',
-      type: '*/*',
-    }),
-  );
-
   setupSwagger(app);
-
   const port = configService.get<number>('APP_PORT') ?? 8080;
-  const supabaseUrl = configService.get<string>('SUPABASE_URL')?.trim() || 'unset';
-  const supabaseJwksUrl = configService.get<string>('SUPABASE_JWKS_URL')?.trim() || 'unset';
-
   await app.listen(port);
-  logger.log(`API running on http://localhost:${port} TEST IS TWO`);
-    logger.log(`[Auth] SUPABASE_URL=${supabaseUrl} TEST`);
-  logger.log(`[Auth] SUPABASE_JWKS_URL=${supabaseJwksUrl} TEST`);
+  logger.log(`API running on http://localhost:${port}`);
 }
 
 bootstrap();

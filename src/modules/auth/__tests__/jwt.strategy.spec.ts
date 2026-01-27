@@ -38,6 +38,7 @@ describe('JwtStrategy', () => {
       email: 'test@example.com',
       role: 'user',
       tokenVersion: 0,
+      hasCustomerProfile: false,
     });
   });
 

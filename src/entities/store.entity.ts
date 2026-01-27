@@ -12,8 +12,8 @@ import {
 } from 'typeorm';
 import { FavoriteStore } from './favorite-store.entity';
 import { Product } from './product.entity';
-import { Review } from './review.entity';
 import { Vendor } from './vendor.entity';
+import { Review } from './review.entity';
 
 @Entity({ name: 'stores', schema: 'core' })
 export class Store {
@@ -33,7 +33,7 @@ export class Store {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Index({ unique: true })
+  @Index('stores_slug_active_idx', { unique: true, where: '"deleted_at" IS NULL' })
   @Column({ type: 'text' })
   slug!: string;
 
@@ -55,6 +55,9 @@ export class Store {
   @Column({ name: 'postal_code', type: 'text' })
   postalCode!: string;
 
+  @Column({ name: 'phone_number', type: 'text', nullable: true })
+  phoneNumber?: string | null;
+
   @Column({ name: 'image_url', type: 'text', nullable: true })
   imageUrl?: string | null;
 
@@ -69,6 +72,25 @@ export class Store {
 
   @Column({ type: 'text', default: 'America/Los_Angeles' })
   timezone!: string;
+
+  @Column({ type: 'double precision', nullable: true })
+  latitude?: number | null;
+
+  @Column({ type: 'double precision', nullable: true })
+  longitude?: number | null;
+
+  @Column({
+    type: 'geography',
+    spatialFeatureType: 'Point',
+    srid: 4326,
+    nullable: true,
+    asExpression:
+      "CASE WHEN latitude IS NOT NULL AND longitude IS NOT NULL THEN ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography END",
+    generatedType: 'STORED',
+    insert: false,
+    update: false,
+  })
+  coordinates?: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

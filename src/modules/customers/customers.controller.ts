@@ -1,10 +1,22 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
 import { CustomersService } from './customers.service';
 import { CreateCustomerProfileDto } from './dto/create-customer-profile.dto';
+import { UpdateVitalityPreferencesDto } from './dto/update-vitality-preferences.dto';
 
 @ApiTags('Customers')
 @ApiBearerAuth()
@@ -24,6 +36,7 @@ export class CustomersController {
         birthYear: profile.birthYear,
         createdAt: profile.createdAt.toISOString(),
         updatedAt: profile.updatedAt.toISOString(),
+        vitalityPreferences: profile.vitalityPreferences ?? {},
       },
       favorites,
     };
@@ -48,6 +61,17 @@ export class CustomersController {
       username: profile.username,
       birthYear: profile.birthYear,
       createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt,
+      vitalityPreferences: profile.vitalityPreferences ?? {},
+    };
+  }
+
+  @Patch('me/vitality-preferences')
+  async updateVitalityPreferences(@User() user: RequestUser, @Body() dto: UpdateVitalityPreferencesDto) {
+    this.ensureCustomer(user);
+    const profile = await this.customers.updateVitalityPreferences(user.id, dto);
+    return {
+      vitalityPreferences: profile.vitalityPreferences ?? {},
       updatedAt: profile.updatedAt,
     };
   }

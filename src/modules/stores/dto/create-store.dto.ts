@@ -1,4 +1,13 @@
-import { IsArray, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsIn, IsNotEmpty, IsNumber, IsObject, IsOptional, IsString } from 'class-validator';
+
+const US_TIMEZONES = [
+  'America/New_York',
+  'America/Chicago',
+  'America/Denver',
+  'America/Los_Angeles',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+] as const;
 
 export class CreateStoreDto {
   @IsString()
@@ -16,6 +25,10 @@ export class CreateStoreDto {
   @IsString()
   @IsOptional()
   addressLine2?: string;
+
+  @IsString()
+  @IsOptional()
+  phoneNumber?: string;
 
   @IsString()
   @IsOptional()
@@ -48,5 +61,14 @@ export class CreateStoreDto {
 
   @IsString()
   @IsOptional()
+  @IsIn(US_TIMEZONES)
   timezone?: string;
+
+  @IsNumber()
+  @IsOptional()
+  latitude?: number;
+
+  @IsNumber()
+  @IsOptional()
+  longitude?: number;
 }

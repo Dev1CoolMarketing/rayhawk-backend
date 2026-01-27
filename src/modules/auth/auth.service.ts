@@ -63,13 +63,15 @@ export class AuthService {
     return this.issueTokens(hydrated);
   }
 
-  async login(user: User, audience?: AuthAudience, birthYear?: number): Promise<TokenResponseDto> {
+  async login(user: User, audience?: AuthAudience, birthYear?: number | null): Promise<TokenResponseDto> {
+    // If logging in as a customer and profile is missing, allow creation when birthYear is supplied.
     if (audience === 'customer') {
       if (!user.customerProfile) {
         if (!birthYear) {
           throw new CustomerProfileRequiredException();
         }
         await this.customersService.createProfile(user.id, birthYear);
+        // Refresh user to include the created profile
         const hydrated = await this.usersService.findById(user.id);
         if (!hydrated) {
           throw new NotFoundException('User not found after creating customer profile');
@@ -77,7 +79,6 @@ export class AuthService {
         user = hydrated;
       }
     }
-
     return this.issueTokens(user, { requestedRole: audience ?? null });
   }
 
@@ -112,7 +113,6 @@ export class AuthService {
     if (!user || user.tokenVersion !== payload.tv) {
       throw new UnauthorizedException('Refresh token no longer valid');
     }
-
     if (requestedRole) {
       const hydrated = await this.usersService.findById(user.id);
       if (!hydrated) {
@@ -154,10 +154,11 @@ export class AuthService {
     return { success: true };
   }
 
-  async requestPasswordReset(email: string) {
+  async requestPasswordReset(email: string): Promise<{ success: true; token?: string }> {
     const normalizedEmail = email.trim().toLowerCase();
     const user = await this.usersService.findByEmail(normalizedEmail);
     if (!user) {
+      // Do not leak existence; respond success.
       return { success: true };
     }
 
@@ -165,7 +166,7 @@ export class AuthService {
       sub: user.id,
       email: user.email,
       tv: user.tokenVersion,
-      type: 'password_reset' as const,
+      type: 'password_reset',
     };
 
     const token = await this.jwt.signAsync(payload, {
@@ -176,14 +177,15 @@ export class AuthService {
     try {
       await this.mailer.sendPasswordResetEmail({ to: user.email, token });
     } catch (error) {
-      this.logger.error(`Unable to send password reset email to ${user.email}`, error as Error);
+      this.logger.error(`Unable to send password reset email to ${user.email}`, error as any);
+      // Do not leak email issues to the client; they still see success.
     }
 
     const includeToken = this.config.get<string>('NODE_ENV') !== 'production';
     return { success: true, token: includeToken ? token : undefined };
   }
 
-  async resetPassword(token: string, newPassword: string) {
+  async resetPassword(token: string, newPassword: string): Promise<{ success: true }> {
     let payload: { sub: string; tv: number; type?: string };
     try {
       payload = await this.jwt.verifyAsync(token, {
@@ -203,6 +205,7 @@ export class AuthService {
     }
 
     const passwordHash = await hash(newPassword, this.saltRounds);
+    // Invalidate existing sessions by bumping token version
     const nextTokenVersion = user.tokenVersion + 1;
     await this.usersService.updatePassword(user.id, passwordHash, nextTokenVersion);
     await this.cleanupExpiredTokens(user.id);

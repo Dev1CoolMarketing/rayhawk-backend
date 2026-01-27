@@ -65,19 +65,6 @@ describe('AuthService', () => {
             create: jest.fn(),
             findById: jest.fn(),
             incrementTokenVersion: jest.fn(),
-            updatePassword: jest.fn(),
-          },
-        },
-        {
-          provide: CustomersService,
-          useValue: {
-            createProfile: jest.fn(),
-          },
-        },
-        {
-          provide: MailerService,
-          useValue: {
-            sendPasswordResetEmail: jest.fn(),
           },
         },
         {
@@ -103,7 +90,20 @@ describe('AuthService', () => {
         {
           provide: getRepositoryToken(Vendor),
           useValue: {
-            findOne: jest.fn(),
+            findOne: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: CustomersService,
+          useValue: {
+            createProfile: jest.fn(),
+          },
+        },
+        {
+          provide: MailerService,
+          useValue: {
+            sendWelcomeEmail: jest.fn(),
+            sendPasswordResetEmail: jest.fn(),
           },
         },
       ],

@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
@@ -14,7 +14,10 @@ export class StoresController {
   constructor(private readonly storesService: StoresService) {}
 
   @Get()
-  getActiveStores() {
+  getActiveStores(@Query('openNow') openNow?: string) {
+    if (openNow === 'true' || openNow === '1') {
+      return this.storesService.findActiveOpenNow();
+    }
     return this.storesService.findActive();
   }
 

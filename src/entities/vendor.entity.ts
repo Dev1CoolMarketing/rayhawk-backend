@@ -16,9 +16,6 @@ export class Vendor {
   @Column({ type: 'text', nullable: true })
   description?: string | null;
 
-  @Column({ name: 'phone_number', type: 'text', nullable: true })
-  phoneNumber?: string | null;
-
   @Column({ name: 'vendor_image_url', type: 'text', nullable: true })
   vendorImageUrl?: string | null;
 
@@ -30,6 +27,9 @@ export class Vendor {
 
   @Column({ type: 'text', default: 'inactive' })
   status!: string;
+
+  @Column({ name: 'phone_number', type: 'text', nullable: true })
+  phoneNumber?: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

@@ -8,8 +8,19 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-
 import { CustomerProfile } from './customer-profile.entity';
+
+export type HormoneFormFactor =
+  | 'injection'
+  | 'gel'
+  | 'cream'
+  | 'oral'
+  | 'patch'
+  | 'pellet'
+  | 'nasal'
+  | 'other';
+
+export type HormoneLogType = 'monthly' | 'vitality';
 
 @Entity({ name: 'hormone_logs', schema: 'core' })
 @Index('IDX_hormone_logs_profile_date', ['customerProfileId', 'dateTaken'])
@@ -25,7 +36,7 @@ export class HormoneLog {
   customerProfile?: CustomerProfile;
 
   @Column({ name: 'log_type', type: 'text', default: 'monthly' })
-  logType!: string;
+  logType!: HormoneLogType;
 
   @Column({ name: 'testosterone_ng_dl', type: 'numeric', precision: 10, scale: 2, nullable: true })
   testosteroneNgDl?: number | null;
@@ -37,7 +48,7 @@ export class HormoneLog {
   doseMg?: number | null;
 
   @Column({ name: 'form_factor', type: 'text', nullable: true })
-  formFactor?: string | null;
+  formFactor?: HormoneFormFactor | null;
 
   @Column({ name: 'date_taken', type: 'timestamptz', default: () => 'now()' })
   dateTaken!: Date;

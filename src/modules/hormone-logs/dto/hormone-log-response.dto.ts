@@ -1,10 +1,12 @@
+import { HormoneFormFactor, HormoneLogType } from '../../../entities/hormone-log.entity';
+
 export interface HormoneLogResponseDto {
   id: string;
-  logType: string;
+  logType: HormoneLogType;
   testosteroneLevel: number | null;
   estradiolLevel: number | null;
   doseMg: number | null;
-  formFactor: string | null;
+  formFactor: HormoneFormFactor | null;
   dateTaken: string;
   moodScore: number | null;
   moodNotes: string | null;
@@ -24,4 +26,13 @@ export interface HormoneLogResponseDto {
   stressLevel: number | null;
   weightLbs: number | null;
   createdAt: string;
+}
+
+export interface HormoneLogSummaryDto {
+  avgTestosterone: number | null;
+  avgEstradiol: number | null;
+  avgDoseMg: number | null;
+  totalLogs: number;
+  byFormFactor: { formFactor: HormoneFormFactor; count: number; avgTestosterone: number | null }[];
+  byMood: { moodScore: number; count: number }[];
 }

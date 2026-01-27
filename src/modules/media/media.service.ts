@@ -7,70 +7,37 @@ export interface ImageUploadResult {
   publicId: string;
 }
 
-export type UploadSignaturePayload = {
-  signature: string;
-  timestamp: number;
-  apiKey: string;
-  cloudName: string;
-  folder: string;
-  resourceType: string;
-  allowedFormats: string[];
-  maxBytes: number;
-};
-
 @Injectable()
 export class MediaService {
   private readonly folder: string;
-  private readonly cloudName: string;
-  private readonly apiKey: string;
-  private readonly apiSecret: string;
 
   constructor(private readonly config: ConfigService) {
-    this.cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME') ?? '';
-    this.apiKey = this.config.get<string>('CLOUDINARY_API_KEY') ?? '';
-    this.apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET') ?? '';
+    const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey = this.config.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET');
+    if (!cloudName || !apiKey || !apiSecret) {
+      // Throwing here would boot the app; instead, configure lazily and throw on upload.
+      this.folder = 'tshots';
+      return;
+    }
     cloudinary.config({
-      cloud_name: this.cloudName,
-      api_key: this.apiKey,
-      api_secret: this.apiSecret,
+      cloud_name: cloudName,
+      api_key: apiKey,
+      api_secret: apiSecret,
     });
     this.folder = this.config.get<string>('CLOUDINARY_MEDIA_FOLDER') ?? 'tshots';
   }
 
-  createUploadSignature(payload: {
-    folder?: string;
-    resourceType?: string;
-    maxBytes?: number;
-    allowedFormats?: string[];
-  }): UploadSignaturePayload {
-    if (!this.cloudName || !this.apiKey || !this.apiSecret) {
-      throw new InternalServerErrorException('Cloudinary is not configured');
-    }
-    const timestamp = Math.floor(Date.now() / 1000);
-    const folder = payload.folder?.trim() || this.folder;
-    const resourceType = payload.resourceType?.trim() || 'image';
-    const allowedFormats = payload.allowedFormats?.length ? payload.allowedFormats : ['jpg', 'jpeg', 'png', 'webp'];
-    const maxBytes = typeof payload.maxBytes === 'number' && payload.maxBytes > 0 ? payload.maxBytes : 5 * 1024 * 1024;
-    const signature = cloudinary.utils.api_sign_request(
-      {
-        folder,
-        timestamp,
-      },
-      this.apiSecret,
-    );
-    return {
-      signature,
-      timestamp,
-      apiKey: this.apiKey,
-      cloudName: this.cloudName,
-      folder,
-      resourceType,
-      allowedFormats,
-      maxBytes,
-    };
-  }
-
   async uploadBase64Image(data: string, folderSuffix?: string): Promise<ImageUploadResult> {
+    const cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME');
+    const apiKey = this.config.get<string>('CLOUDINARY_API_KEY');
+    const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET');
+    if (!cloudName || !apiKey || !apiSecret) {
+      throw new InternalServerErrorException(
+        'Image upload is not configured. Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.',
+      );
+    }
+
     try {
       const folder = folderSuffix ? `${this.folder}/${folderSuffix}` : this.folder;
       const response = await cloudinary.uploader.upload(data, {
@@ -79,7 +46,14 @@ export class MediaService {
       });
       return this.mapResponse(response);
     } catch (error) {
-      throw new InternalServerErrorException(`Failed to upload image: ${(error as Error).message}`);
+      const message =
+        (error as any)?.message ??
+        (error as any)?.error?.message ??
+        (typeof error === 'string' ? error : 'Unexpected error');
+      const hint = message?.toLowerCase().includes('file size')
+        ? ' (file may be too large; limit ~10MB)'
+        : '';
+      throw new InternalServerErrorException(`Failed to upload image: ${message}${hint}`);
     }
   }
 
