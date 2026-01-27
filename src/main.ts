@@ -82,6 +82,8 @@ async function bootstrap() {
   setupSwagger(app);
   const port = configService.get<number>('APP_PORT') ?? 8080;
   await app.listen(port);
+  logger.log('WOW IN HERE  ')
+
   logger.log(`API running on http://localhost:${port}`);
 }
 
