@@ -30,7 +30,7 @@ export class HormoneLogsController {
 
   @Post()
   create(@Body() dto: CreateHormoneLogDto, @User() user: RequestUser) {
-    return this.hormoneLogsService.create(user.id, user.role, dto);
+    return this.hormoneLogsService.create(user.id, user.role, dto, Boolean(user.hasCustomerProfile));
   }
 
   @Get('latest')
@@ -53,12 +53,12 @@ export class HormoneLogsController {
     @Body() dto: UpdateHormoneLogDto,
     @User() user: RequestUser,
   ) {
-    return this.hormoneLogsService.update(user.id, user.role, id, dto);
+    return this.hormoneLogsService.update(user.id, user.role, id, dto, Boolean(user.hasCustomerProfile));
   }
 
   @Delete(':id')
   remove(@Param('id', new ParseUUIDPipe()) id: string, @User() user: RequestUser) {
-    return this.hormoneLogsService.remove(user.id, user.role, id);
+    return this.hormoneLogsService.remove(user.id, user.role, id, Boolean(user.hasCustomerProfile));
   }
 
   @Get('admin/summary')

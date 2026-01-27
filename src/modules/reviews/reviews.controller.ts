@@ -36,7 +36,7 @@ export class ReviewsController {
     @Body() dto: CreateReviewDto,
     @User() user: RequestUser,
   ) {
-    return this.reviewsService.createReview(storeId, user.id, user.role, dto);
+    return this.reviewsService.createReview(storeId, user.id, user.role, dto, Boolean(user.hasCustomerProfile));
   }
 
   @Delete(':reviewId')
@@ -47,7 +47,7 @@ export class ReviewsController {
     @Param('reviewId', new ParseUUIDPipe()) reviewId: string,
     @User() user: RequestUser,
   ) {
-    return this.reviewsService.deleteReview(storeId, reviewId, user.id, user.role);
+    return this.reviewsService.deleteReview(storeId, reviewId, user.id, user.role, Boolean(user.hasCustomerProfile));
   }
 }
 
@@ -81,7 +81,13 @@ export class ProductReviewsController {
     @Body() dto: CreateReviewDto,
     @User() user: RequestUser,
   ) {
-    return this.reviewsService.createProductReview(productId, user.id, user.role, dto);
+    return this.reviewsService.createProductReview(
+      productId,
+      user.id,
+      user.role,
+      dto,
+      Boolean(user.hasCustomerProfile),
+    );
   }
 
   @Delete(':reviewId')
@@ -92,7 +98,13 @@ export class ProductReviewsController {
     @Param('reviewId', new ParseUUIDPipe()) reviewId: string,
     @User() user: RequestUser,
   ) {
-    return this.reviewsService.deleteProductReview(productId, reviewId, user.id, user.role);
+    return this.reviewsService.deleteProductReview(
+      productId,
+      reviewId,
+      user.id,
+      user.role,
+      Boolean(user.hasCustomerProfile),
+    );
   }
 }
 

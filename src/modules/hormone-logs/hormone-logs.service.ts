@@ -19,8 +19,13 @@ export class HormoneLogsService {
     @InjectRepository(CustomerProfile) private readonly profilesRepo: Repository<CustomerProfile>,
   ) {}
 
-  async create(userId: string, role: string, dto: CreateHormoneLogDto): Promise<HormoneLogResponseDto> {
-    if (role !== 'customer') {
+  async create(
+    userId: string,
+    role: string,
+    dto: CreateHormoneLogDto,
+    hasCustomerProfile = false,
+  ): Promise<HormoneLogResponseDto> {
+    if (role !== 'customer' && !hasCustomerProfile) {
       throw new ForbiddenException('Only customers can log hormone tracking entries');
     }
     const profile = await this.profilesRepo.findOne({ where: { userId } });
@@ -166,8 +171,14 @@ export class HormoneLogsService {
     };
   }
 
-  async update(userId: string, role: string, id: string, dto: UpdateHormoneLogDto): Promise<HormoneLogResponseDto> {
-    if (role !== 'customer') {
+  async update(
+    userId: string,
+    role: string,
+    id: string,
+    dto: UpdateHormoneLogDto,
+    hasCustomerProfile = false,
+  ): Promise<HormoneLogResponseDto> {
+    if (role !== 'customer' && !hasCustomerProfile) {
       throw new ForbiddenException('Only customers can update hormone tracking entries');
     }
     const profile = await this.profilesRepo.findOne({ where: { userId } });
@@ -209,8 +220,8 @@ export class HormoneLogsService {
     return this.mapLog(saved);
   }
 
-  async remove(userId: string, role: string, id: string): Promise<void> {
-    if (role !== 'customer') {
+  async remove(userId: string, role: string, id: string, hasCustomerProfile = false): Promise<void> {
+    if (role !== 'customer' && !hasCustomerProfile) {
       throw new ForbiddenException('Only customers can delete hormone tracking entries');
     }
     const profile = await this.profilesRepo.findOne({ where: { userId } });

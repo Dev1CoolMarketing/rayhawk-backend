@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { hash } from 'bcrypt';
+import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { User } from '../../entities';
+import { UserRole } from '../auth/types/auth.types';
 
 @Injectable()
 export class UsersService {
@@ -17,6 +20,23 @@ export class UsersService {
 
   async create(email: string, passwordHash: string, role: User['role'] = 'user'): Promise<User> {
     const user = this.usersRepo.create({ email, passwordHash, role });
+    return this.usersRepo.save(user);
+  }
+
+  async createFromSupabase(data: {
+    email: string;
+    role?: UserRole;
+    firstName?: string | null;
+    lastName?: string | null;
+  }): Promise<User> {
+    const passwordHash = await hash(randomUUID(), 12);
+    const user = this.usersRepo.create({
+      email: data.email,
+      passwordHash,
+      role: data.role ?? 'user',
+      firstName: data.firstName ?? null,
+      lastName: data.lastName ?? null,
+    });
     return this.usersRepo.save(user);
   }
 

@@ -36,6 +36,7 @@ export interface RegisterUserRequest {
 
 export interface LoginRequest extends RegisterUserRequest {
   audience?: AuthAudience;
+  birthYear?: number;
 }
 
 export interface RefreshTokenRequest {

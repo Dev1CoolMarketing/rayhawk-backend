@@ -21,8 +21,14 @@ export class ReviewsService {
     @InjectRepository(Product) private readonly productsRepo: Repository<Product>,
   ) {}
 
-  async createReview(storeId: string, userId: string, role: string, dto: CreateReviewDto): Promise<ReviewResponseDto> {
-    if (role !== 'customer') {
+  async createReview(
+    storeId: string,
+    userId: string,
+    role: string,
+    dto: CreateReviewDto,
+    hasCustomerProfile = false,
+  ): Promise<ReviewResponseDto> {
+    if (role !== 'customer' && !hasCustomerProfile) {
       throw new ForbiddenException('Only customers can submit reviews');
     }
     const store = await this.storesRepo.findOne({ where: { id: storeId, deletedAt: null as any } });
@@ -86,8 +92,14 @@ export class ReviewsService {
     return review ? this.mapReview(review, userId) : null;
   }
 
-  async deleteReview(storeId: string, reviewId: string, userId: string, role: string): Promise<{ success: true }> {
-    if (role !== 'customer') {
+  async deleteReview(
+    storeId: string,
+    reviewId: string,
+    userId: string,
+    role: string,
+    hasCustomerProfile = false,
+  ): Promise<{ success: true }> {
+    if (role !== 'customer' && !hasCustomerProfile) {
       throw new ForbiddenException('Only customers can delete reviews');
     }
     const review = await this.reviewsRepo.findOne({ where: { id: reviewId, storeId, productId: IsNull() } });
@@ -243,8 +255,14 @@ export class ReviewsService {
     return Array.from(summaries.values());
   }
 
-  async createProductReview(productId: string, userId: string, role: string, dto: CreateReviewDto): Promise<ReviewResponseDto> {
-    if (role !== 'customer') {
+  async createProductReview(
+    productId: string,
+    userId: string,
+    role: string,
+    dto: CreateReviewDto,
+    hasCustomerProfile = false,
+  ): Promise<ReviewResponseDto> {
+    if (role !== 'customer' && !hasCustomerProfile) {
       throw new ForbiddenException('Only customers can submit reviews');
     }
     const product = await this.productsRepo.findOne({ where: { id: productId, deletedAt: null as any } });
@@ -303,8 +321,14 @@ export class ReviewsService {
     return review ? this.mapReview(review, userId) : null;
   }
 
-  async deleteProductReview(productId: string, reviewId: string, userId: string, role: string): Promise<{ success: true }> {
-    if (role !== 'customer') {
+  async deleteProductReview(
+    productId: string,
+    reviewId: string,
+    userId: string,
+    role: string,
+    hasCustomerProfile = false,
+  ): Promise<{ success: true }> {
+    if (role !== 'customer' && !hasCustomerProfile) {
       throw new ForbiddenException('Only customers can delete reviews');
     }
     const review = await this.reviewsRepo.findOne({ where: { id: reviewId, productId } });
