@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { hash } from 'bcrypt';
+import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
 import { User } from '../../entities';
+import { UserRole } from '../auth/types/auth.types';
 
 @Injectable()
 export class UsersService {
@@ -20,6 +23,23 @@ export class UsersService {
     return this.usersRepo.save(user);
   }
 
+  async createFromSupabase(data: {
+    email: string;
+    role?: UserRole;
+    firstName?: string | null;
+    lastName?: string | null;
+  }): Promise<User> {
+    const passwordHash = await hash(randomUUID(), 12);
+    const user = this.usersRepo.create({
+      email: data.email,
+      passwordHash,
+      role: data.role ?? 'user',
+      firstName: data.firstName ?? null,
+      lastName: data.lastName ?? null,
+    });
+    return this.usersRepo.save(user);
+  }
+
   async incrementTokenVersion(userId: string): Promise<void> {
     await this.usersRepo.increment({ id: userId }, 'tokenVersion', 1);
   }
@@ -34,6 +54,14 @@ export class UsersService {
       throw new Error('User not found after update');
     }
     return updated;
+  }
+
+  async updatePassword(userId: string, passwordHash: string, tokenVersion?: number): Promise<void> {
+    const updatePayload: Partial<User> = { passwordHash };
+    if (typeof tokenVersion === 'number') {
+      updatePayload.tokenVersion = tokenVersion;
+    }
+    await this.usersRepo.update({ id: userId }, updatePayload);
   }
 
   async deleteById(id: string): Promise<void> {

@@ -5,9 +5,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
-import { RefreshToken, User } from '../../../entities';
+import { RefreshToken, User, Vendor } from '../../../entities';
 import { UsersService } from '../../users/users.service';
+import { CustomersService } from '../../customers/customers.service';
 import { AuthService } from '../auth.service';
+import { MailerService } from '../../mailer/mailer.service';
 
 jest.mock('bcrypt', () => ({
   hash: jest.fn().mockResolvedValue('hashed-password'),
@@ -63,6 +65,19 @@ describe('AuthService', () => {
             create: jest.fn(),
             findById: jest.fn(),
             incrementTokenVersion: jest.fn(),
+            updatePassword: jest.fn(),
+          },
+        },
+        {
+          provide: CustomersService,
+          useValue: {
+            createProfile: jest.fn(),
+          },
+        },
+        {
+          provide: MailerService,
+          useValue: {
+            sendPasswordResetEmail: jest.fn(),
           },
         },
         {
@@ -83,6 +98,12 @@ describe('AuthService', () => {
             save: jest.fn(),
             findOne: jest.fn(),
             delete: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(Vendor),
+          useValue: {
+            findOne: jest.fn(),
           },
         },
       ],

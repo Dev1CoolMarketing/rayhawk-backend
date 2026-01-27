@@ -10,6 +10,8 @@ import { RegisterUserDto } from './dto/register-user.dto';
 import { RegisterCustomerDto } from './dto/register-customer.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { RequestUser } from './types/request-user.interface';
 
@@ -43,7 +45,7 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   async login(@Body() dto: LoginUserDto, @Req() req: Request & { user: UserEntity }): Promise<TokenResponseDto> {
-    return this.authService.login(req.user, dto.audience);
+    return this.authService.login(req.user, dto.audience, dto.birthYear);
   }
 
   /**
@@ -67,7 +69,7 @@ export class AuthController {
    */
   @Post('refresh')
   async refresh(@Body() dto: RefreshTokenDto): Promise<TokenResponseDto> {
-    return this.authService.refresh(dto.refreshToken);
+    return this.authService.refresh(dto.refreshToken, dto.role);
   }
 
   /**
@@ -81,5 +83,15 @@ export class AuthController {
   @Post('logout')
   async logout(@CurrentUser() user: RequestUser, @Body() dto: RefreshTokenDto) {
     return this.authService.logout(dto.refreshToken, user.id);
+  }
+
+  @Post('password/forgot')
+  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Post('password/reset')
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.password);
   }
 }

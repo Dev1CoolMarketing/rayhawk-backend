@@ -12,6 +12,7 @@ import {
 } from 'typeorm';
 import { FavoriteStore } from './favorite-store.entity';
 import { Product } from './product.entity';
+import { Review } from './review.entity';
 import { Vendor } from './vendor.entity';
 
 @Entity({ name: 'stores', schema: 'core' })
@@ -63,6 +64,12 @@ export class Store {
   @Column({ name: 'opening_hours', type: 'jsonb', nullable: true })
   openingHours?: string[] | null;
 
+  @Column({ name: 'opening_hours_weekly', type: 'jsonb', nullable: true })
+  openingHoursWeekly?: Record<string, { start: number; end: number }[]> | null;
+
+  @Column({ type: 'text', default: 'America/Los_Angeles' })
+  timezone!: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
@@ -77,4 +84,7 @@ export class Store {
 
   @OneToMany(() => Product, (product) => product.store)
   products?: Product[];
+
+  @OneToMany(() => Review, (review) => review.store)
+  reviews?: Review[];
 }

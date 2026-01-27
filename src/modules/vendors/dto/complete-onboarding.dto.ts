@@ -16,4 +16,16 @@ export class CompleteOnboardingDto {
   @IsString()
   @IsOptional()
   vendorDescription?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorImageUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  vendorImagePublicId?: string;
+
+  @IsString()
+  @IsOptional()
+  planKey?: string;
 }

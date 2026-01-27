@@ -1,4 +1,4 @@
-import { IsArray, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsArray, IsNotEmpty, IsObject, IsOptional, IsString } from 'class-validator';
 
 export class CreateStoreDto {
   @IsString()
@@ -41,4 +41,12 @@ export class CreateStoreDto {
   @IsString({ each: true })
   @IsOptional()
   openingHours?: string[];
+
+  @IsObject()
+  @IsOptional()
+  openingHoursWeekly?: Record<string, { start: number; end: number }[]>;
+
+  @IsString()
+  @IsOptional()
+  timezone?: string;
 }

@@ -47,6 +47,15 @@ export class ProductsService {
       ...dto,
       status: dto.status ?? 'active',
       linkUrl: dto.linkUrl ?? null,
+      billingType: dto.billingType ?? 'one_time',
+      billingInterval: dto.billingInterval ?? null,
+      billingQuantity: dto.billingQuantity ?? null,
+      unitCount: dto.unitCount ?? null,
+      unitCountType: dto.unitCountType ?? null,
+      formFactor: dto.formFactor ?? null,
+      bulletPoints: dto.bulletPoints ?? null,
+      featured: dto.featured ?? false,
+      categories: dto.categories ? dto.categories.map((key) => ({ key, label: key })) : null,
       storeId,
     });
     return this.productsRepository.save(product);
@@ -94,6 +103,33 @@ export class ProductsService {
     }
     if (dto.linkUrl !== undefined) {
       product.linkUrl = dto.linkUrl ?? null;
+    }
+    if (dto.bulletPoints !== undefined) {
+      product.bulletPoints = dto.bulletPoints ?? null;
+    }
+    if (dto.featured !== undefined) {
+      product.featured = dto.featured;
+    }
+    if (dto.unitCount !== undefined) {
+      product.unitCount = dto.unitCount ?? null;
+    }
+    if (dto.unitCountType !== undefined) {
+      product.unitCountType = dto.unitCountType ?? null;
+    }
+    if (dto.formFactor !== undefined) {
+      product.formFactor = dto.formFactor ?? null;
+    }
+    if (dto.billingType !== undefined) {
+      product.billingType = dto.billingType ?? null;
+    }
+    if (dto.billingInterval !== undefined) {
+      product.billingInterval = dto.billingInterval ?? null;
+    }
+    if (dto.billingQuantity !== undefined) {
+      product.billingQuantity = dto.billingQuantity ?? null;
+    }
+    if (dto.categories !== undefined) {
+      product.categories = dto.categories ? dto.categories.map((key) => ({ key, label: key })) : null;
     }
     return this.productsRepository.save(product);
   }

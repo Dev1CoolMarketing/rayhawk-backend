@@ -7,17 +7,67 @@ export interface ImageUploadResult {
   publicId: string;
 }
 
+export type UploadSignaturePayload = {
+  signature: string;
+  timestamp: number;
+  apiKey: string;
+  cloudName: string;
+  folder: string;
+  resourceType: string;
+  allowedFormats: string[];
+  maxBytes: number;
+};
+
 @Injectable()
 export class MediaService {
   private readonly folder: string;
+  private readonly cloudName: string;
+  private readonly apiKey: string;
+  private readonly apiSecret: string;
 
   constructor(private readonly config: ConfigService) {
+    this.cloudName = this.config.get<string>('CLOUDINARY_CLOUD_NAME') ?? '';
+    this.apiKey = this.config.get<string>('CLOUDINARY_API_KEY') ?? '';
+    this.apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET') ?? '';
     cloudinary.config({
-      cloud_name: this.config.get<string>('CLOUDINARY_CLOUD_NAME'),
-      api_key: this.config.get<string>('CLOUDINARY_API_KEY'),
-      api_secret: this.config.get<string>('CLOUDINARY_API_SECRET'),
+      cloud_name: this.cloudName,
+      api_key: this.apiKey,
+      api_secret: this.apiSecret,
     });
     this.folder = this.config.get<string>('CLOUDINARY_MEDIA_FOLDER') ?? 'tshots';
+  }
+
+  createUploadSignature(payload: {
+    folder?: string;
+    resourceType?: string;
+    maxBytes?: number;
+    allowedFormats?: string[];
+  }): UploadSignaturePayload {
+    if (!this.cloudName || !this.apiKey || !this.apiSecret) {
+      throw new InternalServerErrorException('Cloudinary is not configured');
+    }
+    const timestamp = Math.floor(Date.now() / 1000);
+    const folder = payload.folder?.trim() || this.folder;
+    const resourceType = payload.resourceType?.trim() || 'image';
+    const allowedFormats = payload.allowedFormats?.length ? payload.allowedFormats : ['jpg', 'jpeg', 'png', 'webp'];
+    const maxBytes = typeof payload.maxBytes === 'number' && payload.maxBytes > 0 ? payload.maxBytes : 5 * 1024 * 1024;
+    const signature = cloudinary.utils.api_sign_request(
+      {
+        folder,
+        timestamp,
+      },
+      this.apiSecret,
+    );
+    return {
+      signature,
+      timestamp,
+      apiKey: this.apiKey,
+      cloudName: this.cloudName,
+      folder,
+      resourceType,
+      allowedFormats,
+      maxBytes,
+    };
   }
 
   async uploadBase64Image(data: string, folderSuffix?: string): Promise<ImageUploadResult> {

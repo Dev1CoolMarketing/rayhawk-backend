@@ -46,6 +46,8 @@ export class StoresService {
       ...dto,
       vendorId: vendor.id,
       openingHours: dto.openingHours ?? null,
+      openingHoursWeekly: dto.openingHoursWeekly ?? null,
+      timezone: dto.timezone ?? 'America/Los_Angeles',
       description: dto.description ?? null,
     });
     try {
@@ -87,6 +89,12 @@ export class StoresService {
     if (dto.openingHours !== undefined) {
       const normalized = dto.openingHours.map((line) => line.trim()).filter((line) => line.length > 0);
       store.openingHours = normalized.length ? normalized : null;
+    }
+    if (dto.openingHoursWeekly !== undefined) {
+      store.openingHoursWeekly = dto.openingHoursWeekly;
+    }
+    if (dto.timezone !== undefined) {
+      store.timezone = dto.timezone || 'America/Los_Angeles';
     }
     try {
       return await this.storesRepository.save(store);

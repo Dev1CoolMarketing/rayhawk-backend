@@ -16,6 +16,7 @@ import { AuthAudience, UserRole } from './types/auth.types';
 import { getAssignableRoles } from './utils/role.utils';
 import { CustomersService } from '../customers/customers.service';
 import { CustomerProfileRequiredException } from './exceptions/customer-profile-required.exception';
+import { MailerService } from '../mailer/mailer.service';
 
 @Injectable()
 export class AuthService {
@@ -31,6 +32,7 @@ export class AuthService {
     @InjectRepository(Vendor)
     private readonly vendorsRepo: Repository<Vendor>,
     private readonly customersService: CustomersService,
+    private readonly mailer: MailerService,
   ) {}
 
   async register(dto: RegisterUserDto): Promise<TokenResponseDto> {
@@ -61,7 +63,21 @@ export class AuthService {
     return this.issueTokens(hydrated);
   }
 
-  async login(user: User, audience?: AuthAudience): Promise<TokenResponseDto> {
+  async login(user: User, audience?: AuthAudience, birthYear?: number): Promise<TokenResponseDto> {
+    if (audience === 'customer') {
+      if (!user.customerProfile) {
+        if (!birthYear) {
+          throw new CustomerProfileRequiredException();
+        }
+        await this.customersService.createProfile(user.id, birthYear);
+        const hydrated = await this.usersService.findById(user.id);
+        if (!hydrated) {
+          throw new NotFoundException('User not found after creating customer profile');
+        }
+        user = hydrated;
+      }
+    }
+
     return this.issueTokens(user, { requestedRole: audience ?? null });
   }
 
@@ -73,7 +89,7 @@ export class AuthService {
     return this.mapUserWithVendor(user, activeRole);
   }
 
-  async refresh(refreshToken: string): Promise<TokenResponseDto> {
+  async refresh(refreshToken: string, requestedRole?: AuthAudience): Promise<TokenResponseDto> {
     if (!refreshToken) {
       throw new BadRequestException('Refresh token is required');
     }
@@ -92,15 +108,23 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token has expired');
     }
 
-    const user = storedToken.user;
+    let user = storedToken.user;
     if (!user || user.tokenVersion !== payload.tv) {
       throw new UnauthorizedException('Refresh token no longer valid');
+    }
+
+    if (requestedRole) {
+      const hydrated = await this.usersService.findById(user.id);
+      if (!hydrated) {
+        throw new UnauthorizedException('Refresh token no longer valid');
+      }
+      user = hydrated;
     }
 
     storedToken.revokedAt = new Date();
     await this.refreshTokenRepo.save(storedToken);
 
-    return this.issueTokens(user);
+    return this.issueTokens(user, { requestedRole: requestedRole ?? null });
   }
 
   async logout(refreshToken: string, userId: string): Promise<{ success: true }> {
@@ -126,6 +150,62 @@ export class AuthService {
       storedToken.revokedAt = new Date();
       await this.refreshTokenRepo.save(storedToken);
     }
+
+    return { success: true };
+  }
+
+  async requestPasswordReset(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(normalizedEmail);
+    if (!user) {
+      return { success: true };
+    }
+
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      tv: user.tokenVersion,
+      type: 'password_reset' as const,
+    };
+
+    const token = await this.jwt.signAsync(payload, {
+      secret: this.getAccessTokenSecret(),
+      expiresIn: this.getResetTokenTtlSeconds(),
+    });
+
+    try {
+      await this.mailer.sendPasswordResetEmail({ to: user.email, token });
+    } catch (error) {
+      this.logger.error(`Unable to send password reset email to ${user.email}`, error as Error);
+    }
+
+    const includeToken = this.config.get<string>('NODE_ENV') !== 'production';
+    return { success: true, token: includeToken ? token : undefined };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    let payload: { sub: string; tv: number; type?: string };
+    try {
+      payload = await this.jwt.verifyAsync(token, {
+        secret: this.getAccessTokenSecret(),
+      });
+    } catch (error) {
+      throw new UnauthorizedException('Invalid or expired reset token');
+    }
+
+    if (payload.type !== 'password_reset') {
+      throw new UnauthorizedException('Invalid reset token');
+    }
+
+    const user = await this.usersService.findById(payload.sub);
+    if (!user || user.tokenVersion !== payload.tv) {
+      throw new UnauthorizedException('Invalid reset token');
+    }
+
+    const passwordHash = await hash(newPassword, this.saltRounds);
+    const nextTokenVersion = user.tokenVersion + 1;
+    await this.usersService.updatePassword(user.id, passwordHash, nextTokenVersion);
+    await this.cleanupExpiredTokens(user.id);
 
     return { success: true };
   }
@@ -261,6 +341,10 @@ export class AuthService {
 
   private getRefreshTokenTtlSeconds(): number {
     return this.parseDurationSeconds(this.config.get<string>('JWT_REFRESH_TOKEN_TTL_SECONDS'), 60 * 60 * 24 * 14);
+  }
+
+  private getResetTokenTtlSeconds(): number {
+    return this.parseDurationSeconds(this.config.get<string>('PASSWORD_RESET_TOKEN_TTL_SECONDS'), 15 * 60);
   }
 
   private parseDurationSeconds(value: string | undefined, fallback: number): number {
