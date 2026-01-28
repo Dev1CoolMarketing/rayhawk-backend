@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { User } from '../../common/decorators/user.decorator';
 import { RequestUser } from '../auth/types/request-user.interface';
+import { AuditLogsService } from '../audit/audit.service';
 import { CustomersService } from './customers.service';
 import { CreateCustomerProfileDto } from './dto/create-customer-profile.dto';
 import { UpdateVitalityPreferencesDto } from './dto/update-vitality-preferences.dto';
@@ -23,13 +24,22 @@ import { UpdateVitalityPreferencesDto } from './dto/update-vitality-preferences.
 @UseGuards(JwtAuthGuard)
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customers: CustomersService) {}
+  constructor(
+    private readonly customers: CustomersService,
+    private readonly auditLogs: AuditLogsService,
+  ) {}
 
   @Get('me')
   async getMe(@User() user: RequestUser) {
     this.ensureCustomer(user);
     const profile = await this.customers.requireProfile(user.id);
     const favorites = await this.customers.listFavoriteStores(user.id);
+    void this.auditLogs.record({
+      actorUserId: user.id,
+      action: 'read',
+      resourceType: 'customer_profile',
+      resourceId: profile.userId,
+    });
     return {
       profile: {
         username: profile.username,
@@ -56,7 +66,14 @@ export class CustomersController {
 
   @Post('me/profile')
   async createProfile(@User() user: RequestUser, @Body() dto: CreateCustomerProfileDto) {
+    const existing = await this.customers.findProfile(user.id);
     const profile = await this.customers.upsertProfile(user.id, dto.birthYear);
+    void this.auditLogs.record({
+      actorUserId: user.id,
+      action: existing ? 'update' : 'create',
+      resourceType: 'customer_profile',
+      resourceId: profile.userId,
+    });
     return {
       username: profile.username,
       birthYear: profile.birthYear,
@@ -70,6 +87,12 @@ export class CustomersController {
   async updateVitalityPreferences(@User() user: RequestUser, @Body() dto: UpdateVitalityPreferencesDto) {
     this.ensureCustomer(user);
     const profile = await this.customers.updateVitalityPreferences(user.id, dto);
+    void this.auditLogs.record({
+      actorUserId: user.id,
+      action: 'update_preferences',
+      resourceType: 'customer_profile',
+      resourceId: profile.userId,
+    });
     return {
       vitalityPreferences: profile.vitalityPreferences ?? {},
       updatedAt: profile.updatedAt,

@@ -12,22 +12,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<Request & { user?: RequestUser }>();
-    const route = `${request.method ?? 'N/A'} ${request.url ?? 'N/A'}`;
     if (this.supabaseAuth && this.supabaseAuth.isConfigured()) {
-      // eslint-disable-next-line no-console
-      console.log(`[AuthGuard] ${route} using Supabase auth`);
-      request.user = await this.supabaseAuth.authenticateBearer(request.headers.authorization);
-      // eslint-disable-next-line no-console
-      console.log(`[AuthGuard] ${route} Supabase auth ok`, {
-        userId: request.user?.id,
-        role: request.user?.role,
-      });
+      const cookieName = process.env.AUTH_COOKIE_NAME ?? 'tshots_access_token';
+      const cookieToken = this.extractCookieToken(request.headers.cookie, cookieName);
+      const authorization =
+        request.headers.authorization ?? (cookieToken ? `Bearer ${cookieToken}` : undefined);
+      request.user = await this.supabaseAuth.authenticateBearer(authorization);
       return true;
     }
 
     const result = (await super.canActivate(context)) as boolean;
-    // eslint-disable-next-line no-console
-    console.log(`[AuthGuard] ${route} jwt strategy result=${result}`);
     return result;
   }
 
@@ -36,5 +30,22 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       throw err || new UnauthorizedException('Invalid or expired access token');
     }
     return user;
+  }
+
+  private extractCookieToken(header: string | undefined, name: string): string | null {
+    if (!header) return null;
+    const parts = header.split(';');
+    for (const part of parts) {
+      const [rawKey, ...rest] = part.trim().split('=');
+      if (!rawKey || rawKey !== name) continue;
+      const rawValue = rest.join('=');
+      if (!rawValue) return null;
+      try {
+        return decodeURIComponent(rawValue);
+      } catch {
+        return rawValue;
+      }
+    }
+    return null;
   }
 }

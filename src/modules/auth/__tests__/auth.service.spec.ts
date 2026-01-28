@@ -10,6 +10,7 @@ import { UsersService } from '../../users/users.service';
 import { CustomersService } from '../../customers/customers.service';
 import { AuthService } from '../auth.service';
 import { MailerService } from '../../mailer/mailer.service';
+import { AuditLogsService } from '../../audit/audit.service';
 
 jest.mock('bcrypt', () => ({
   hash: jest.fn().mockResolvedValue('hashed-password'),
@@ -104,6 +105,12 @@ describe('AuthService', () => {
           useValue: {
             sendWelcomeEmail: jest.fn(),
             sendPasswordResetEmail: jest.fn(),
+          },
+        },
+        {
+          provide: AuditLogsService,
+          useValue: {
+            record: jest.fn(),
           },
         },
       ],

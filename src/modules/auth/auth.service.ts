@@ -17,6 +17,7 @@ import { getAssignableRoles } from './utils/role.utils';
 import { CustomersService } from '../customers/customers.service';
 import { CustomerProfileRequiredException } from './exceptions/customer-profile-required.exception';
 import { MailerService } from '../mailer/mailer.service';
+import { AuditLogsService } from '../audit/audit.service';
 
 @Injectable()
 export class AuthService {
@@ -33,6 +34,7 @@ export class AuthService {
     private readonly vendorsRepo: Repository<Vendor>,
     private readonly customersService: CustomersService,
     private readonly mailer: MailerService,
+    private readonly auditLogs: AuditLogsService,
   ) {}
 
   async register(dto: RegisterUserDto): Promise<TokenResponseDto> {
@@ -44,6 +46,12 @@ export class AuthService {
 
     const passwordHash = await hash(dto.password, this.saltRounds);
     const user = await this.usersService.create(normalizedEmail, passwordHash);
+    void this.auditLogs.record({
+      actorUserId: user.id,
+      action: 'register',
+      resourceType: 'user',
+      resourceId: user.id,
+    });
     return this.issueTokens(user);
   }
 
@@ -60,6 +68,12 @@ export class AuthService {
     if (!hydrated) {
       throw new NotFoundException('User not found after registration');
     }
+    void this.auditLogs.record({
+      actorUserId: user.id,
+      action: 'register_customer',
+      resourceType: 'user',
+      resourceId: user.id,
+    });
     return this.issueTokens(hydrated);
   }
 
@@ -79,7 +93,15 @@ export class AuthService {
         user = hydrated;
       }
     }
-    return this.issueTokens(user, { requestedRole: audience ?? null });
+    const result = await this.issueTokens(user, { requestedRole: audience ?? null });
+    void this.auditLogs.record({
+      actorUserId: user.id,
+      action: 'login',
+      resourceType: 'user',
+      resourceId: user.id,
+      metadata: audience ? { audience } : undefined,
+    });
+    return result;
   }
 
   async getCurrentUser(userId: string, activeRole?: UserRole) {
@@ -151,6 +173,12 @@ export class AuthService {
       await this.refreshTokenRepo.save(storedToken);
     }
 
+    void this.auditLogs.record({
+      actorUserId: userId,
+      action: 'logout',
+      resourceType: 'user',
+      resourceId: userId,
+    });
     return { success: true };
   }
 
@@ -177,10 +205,16 @@ export class AuthService {
     try {
       await this.mailer.sendPasswordResetEmail({ to: user.email, token });
     } catch (error) {
-      this.logger.error(`Unable to send password reset email to ${user.email}`, error as any);
+      this.logger.error('Unable to send password reset email', error as any);
       // Do not leak email issues to the client; they still see success.
     }
 
+    void this.auditLogs.record({
+      actorUserId: user.id,
+      action: 'password_reset_request',
+      resourceType: 'user',
+      resourceId: user.id,
+    });
     const includeToken = this.config.get<string>('NODE_ENV') !== 'production';
     return { success: true, token: includeToken ? token : undefined };
   }
@@ -210,6 +244,12 @@ export class AuthService {
     await this.usersService.updatePassword(user.id, passwordHash, nextTokenVersion);
     await this.cleanupExpiredTokens(user.id);
 
+    void this.auditLogs.record({
+      actorUserId: user.id,
+      action: 'password_reset',
+      resourceType: 'user',
+      resourceId: user.id,
+    });
     return { success: true };
   }
 
@@ -277,7 +317,7 @@ export class AuthService {
         expiresAt: LessThan(new Date()),
       });
     } catch (error) {
-      this.logger.warn(`Failed to cleanup refresh tokens for user ${userId}: ${(error as Error).message}`);
+      this.logger.warn(`Failed to cleanup refresh tokens: ${(error as Error).message}`);
     }
   }
 

@@ -19,4 +19,15 @@ export class JobsController {
     const job = await this.jobsService.enqueueDailySummary(accountId);
     return { enqueued: Boolean(job) };
   }
+
+  @Post('cleanup-retention')
+  @ApiHeader({ name: 'x-internal-token', required: true, description: 'Shared secret for pg_cron' })
+  async cleanupRetention(@Headers('x-internal-token') rawToken: string | string[]) {
+    const token = Array.isArray(rawToken) ? rawToken[0] : rawToken;
+    const expected = this.config.get<string>('INTERNAL_JOBS_TOKEN');
+    if (!expected || token !== expected) {
+      throw new UnauthorizedException('Invalid internal token');
+    }
+    return this.jobsService.cleanupRetention();
+  }
 }

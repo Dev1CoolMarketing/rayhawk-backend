@@ -8,10 +8,12 @@ import { RefreshToken, Vendor } from '../../entities';
 import { UsersModule } from '../users/users.module';
 import { CustomersModule } from '../customers/customers.module';
 import { MailerModule } from '../mailer/mailer.module';
+import { AuditModule } from '../audit/audit.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { SupabaseAuthService } from './supabase-auth.service';
+import { SupabaseWebAuthService } from './supabase-web-auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 
@@ -23,6 +25,7 @@ import { LocalStrategy } from './strategies/local.strategy';
     UsersModule,
     CustomersModule,
     MailerModule,
+    AuditModule,
     TypeOrmModule.forFeature([RefreshToken, Vendor]),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -42,7 +45,7 @@ import { LocalStrategy } from './strategies/local.strategy';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, LocalStrategy, JwtAuthGuard, LocalAuthGuard, SupabaseAuthService],
-  exports: [AuthService, JwtAuthGuard, SupabaseAuthService],
+  providers: [AuthService, JwtStrategy, LocalStrategy, JwtAuthGuard, LocalAuthGuard, SupabaseAuthService, SupabaseWebAuthService],
+  exports: [AuthService, JwtAuthGuard, SupabaseAuthService, SupabaseWebAuthService],
 })
 export class AuthModule {}
