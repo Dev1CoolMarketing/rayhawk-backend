@@ -32,6 +32,15 @@ export class User {
   @Column({ name: 'token_version', type: 'int', default: 0 })
   tokenVersion!: number;
 
+  @Column({ name: 'legal_hold', type: 'boolean', default: false })
+  legalHold!: boolean;
+
+  @Column({ name: 'legal_hold_reason', type: 'text', nullable: true })
+  legalHoldReason?: string | null;
+
+  @Column({ name: 'legal_hold_set_at', type: 'timestamptz', nullable: true })
+  legalHoldSetAt?: Date | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 

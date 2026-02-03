@@ -50,9 +50,26 @@ export class MailerService {
 
     try {
       await this.transporter.sendMail(mailOptions);
-      this.logger.log(`Sent password reset email to ${params.to}`);
+      this.logger.log('Sent password reset email');
     } catch (error) {
-      this.logger.error(`Failed to send reset email to ${params.to}`, error as any);
+      this.logger.error('Failed to send reset email', error as any);
+      throw error;
+    }
+  }
+
+  async sendNotificationEmail(params: { to: string; subject: string; body: string }) {
+    const from = this.config.get<string>('MAIL_FROM') || this.config.get<string>('GMAIL_USER');
+    const mailOptions = {
+      from,
+      to: params.to,
+      subject: params.subject,
+      text: params.body,
+    };
+    try {
+      await this.transporter.sendMail(mailOptions);
+      this.logger.log('Sent notification email');
+    } catch (error) {
+      this.logger.error('Failed to send notification email', error as any);
       throw error;
     }
   }

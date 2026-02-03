@@ -56,16 +56,9 @@ export class SupabaseAuthService {
     let hasCustomerProfile = Boolean(user.customerProfile);
     if (needsCustomerProfile) {
       const birthYear = this.readMetadataNumber(payload.user_metadata, 'birth_year');
-      if (birthYear === null) {
-        // eslint-disable-next-line no-console
-        console.log('[SupabaseAuth] Vendor missing birth_year metadata; skipping customer profile creation', {
-          email: normalizedEmail,
-        });
-      } else {
+      if (birthYear !== null) {
         await this.customersService.upsertProfile(user.id, birthYear);
         hasCustomerProfile = true;
-        // eslint-disable-next-line no-console
-        console.log('[SupabaseAuth] Created customer profile for vendor', { email: normalizedEmail, birthYear });
       }
     }
 

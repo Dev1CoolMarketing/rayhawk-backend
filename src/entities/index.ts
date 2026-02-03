@@ -15,6 +15,8 @@ export * from './billing-invoice.entity';
 export * from './billing-webhook-event.entity';
 export * from './billing-subscription-item.entity';
 export * from './analytics-event.entity';
+export * from './audit-log.entity';
+export * from './notification.entity';
 export * from './review.entity';
 export * from './review-tag.entity';
 export * from './hormone-log.entity';

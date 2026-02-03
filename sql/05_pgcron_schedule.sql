@@ -13,3 +13,15 @@
 --     );
 --     $$
 -- );
+
+-- Optional retention cleanup (analytics + audit logs).
+-- SELECT cron.schedule(
+--     'daily-retention-cleanup',
+--     '30 2 * * *',
+--     $$
+--     SELECT http_post(
+--         url := 'http://api:8080/v1/cron/cleanup-retention',
+--         headers := jsonb_build_object('x-internal-token', 'change-me')
+--     );
+--     $$
+-- );

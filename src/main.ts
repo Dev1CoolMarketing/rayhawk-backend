@@ -1,6 +1,7 @@
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { json, urlencoded } from 'body-parser';
 import { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
@@ -8,9 +9,22 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { setupSwagger } from './infra/swagger';
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { rawBody: true });
+  const app = (await NestFactory.create(AppModule, { rawBody: true })) as NestExpressApplication;
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
+
+  if (process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      const forwarded = req.headers['x-forwarded-proto'];
+      const proto = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+      const normalized = typeof proto === 'string' ? proto.split(',')[0].trim() : '';
+      if ((normalized && normalized !== 'https') || (!normalized && !req.secure)) {
+        return res.status(400).json({ message: 'HTTPS required' });
+      }
+      return next();
+    });
+  }
 
   const corsOrigins =
     configService
@@ -82,8 +96,6 @@ async function bootstrap() {
   setupSwagger(app);
   const port = configService.get<number>('APP_PORT') ?? 8080;
   await app.listen(port);
-  logger.log('WOW IN HERE  ')
-
   logger.log(`API running on http://localhost:${port}`);
 }
 

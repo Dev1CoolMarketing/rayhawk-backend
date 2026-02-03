@@ -8,6 +8,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HormoneLog, HormoneFormFactor, CustomerProfile } from '../../entities';
+import { AuditLogsService } from '../audit/audit.service';
 import { CreateHormoneLogDto } from './dto/create-hormone-log.dto';
 import { HormoneLogResponseDto, HormoneLogSummaryDto } from './dto/hormone-log-response.dto';
 import { UpdateHormoneLogDto } from './dto/update-hormone-log.dto';
@@ -17,6 +18,7 @@ export class HormoneLogsService {
   constructor(
     @InjectRepository(HormoneLog) private readonly logsRepo: Repository<HormoneLog>,
     @InjectRepository(CustomerProfile) private readonly profilesRepo: Repository<CustomerProfile>,
+    private readonly auditLogs: AuditLogsService,
   ) {}
 
   async create(
@@ -97,6 +99,13 @@ export class HormoneLogsService {
       weightLbs: dto.weightLbs ?? null,
     });
     const saved = await this.logsRepo.save(log);
+    void this.auditLogs.record({
+      actorUserId: userId,
+      action: 'create',
+      resourceType: 'hormone_log',
+      resourceId: saved.id,
+      metadata: { logType: saved.logType },
+    });
     return this.mapLog(saved);
   }
 
@@ -108,6 +117,13 @@ export class HormoneLogsService {
     const log = await this.logsRepo.findOne({
       where: { customerProfileId: profile.userId },
       order: { dateTaken: 'DESC', createdAt: 'DESC' },
+    });
+    void this.auditLogs.record({
+      actorUserId: userId,
+      action: 'read_latest',
+      resourceType: 'hormone_log',
+      resourceId: log?.id ?? null,
+      metadata: log ? { logType: log.logType } : { found: false },
     });
     return log ? this.mapLog(log) : null;
   }
@@ -122,6 +138,12 @@ export class HormoneLogsService {
       order: { dateTaken: 'DESC', createdAt: 'DESC' },
       take: limit,
       skip: offset,
+    });
+    void this.auditLogs.record({
+      actorUserId: userId,
+      action: 'read_list',
+      resourceType: 'hormone_log',
+      metadata: { count: logs.length, limit, offset },
     });
     return logs.map((log) => this.mapLog(log));
   }
@@ -217,6 +239,13 @@ export class HormoneLogsService {
     if (dto.weightLbs !== undefined) log.weightLbs = dto.weightLbs ?? null;
 
     const saved = await this.logsRepo.save(log);
+    void this.auditLogs.record({
+      actorUserId: userId,
+      action: 'update',
+      resourceType: 'hormone_log',
+      resourceId: saved.id,
+      metadata: { logType: saved.logType },
+    });
     return this.mapLog(saved);
   }
 
@@ -232,6 +261,12 @@ export class HormoneLogsService {
     if (!result.affected) {
       throw new NotFoundException('Log not found');
     }
+    void this.auditLogs.record({
+      actorUserId: userId,
+      action: 'delete',
+      resourceType: 'hormone_log',
+      resourceId: id,
+    });
   }
 
   private mapLog(log: HormoneLog): HormoneLogResponseDto {

@@ -43,6 +43,7 @@ import { ReviewsModule } from './modules/reviews/reviews.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HormoneLogsModule } from './modules/hormone-logs/hormone-logs.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { HormoneLogsModule } from './modules/hormone-logs/hormone-logs.module';
     CustomersModule,
     AnalyticsModule,
     HormoneLogsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}
