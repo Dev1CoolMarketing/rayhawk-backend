@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createRemoteJWKSet, decodeJwt, jwtVerify, JWTPayload } from 'jose';
+import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify, JWTPayload } from 'jose';
 import { CustomersService } from '../customers/customers.service';
 import { UsersService } from '../users/users.service';
 import { UserRole } from './types/auth.types';
@@ -19,6 +19,7 @@ const SUPPORTED_ROLES: UserRole[] = ['admin', 'user', 'vendor', 'customer'];
 export class SupabaseAuthService {
   private jwks?: ReturnType<typeof createRemoteJWKSet>;
   private issuer?: string;
+  private legacySecret?: Uint8Array | null;
 
   constructor(
     private readonly config: ConfigService,
@@ -27,7 +28,7 @@ export class SupabaseAuthService {
   ) {}
 
   isConfigured(): boolean {
-    return Boolean(this.resolveJwksUrl());
+    return Boolean(this.resolveJwksUrl() || this.resolveLegacySecret());
   }
 
   async authenticateBearer(authorization?: string): Promise<RequestUser> {
@@ -73,33 +74,76 @@ export class SupabaseAuthService {
 
   private async verifyToken(token: string): Promise<SupabaseJwtPayload> {
     const jwksUrl = this.resolveJwksUrl();
-    if (!jwksUrl) {
+    const issuer = this.resolveIssuer();
+    let jwksError: unknown;
+    let hsError: unknown;
+
+    if (jwksUrl) {
+      if (!this.jwks) {
+        this.jwks = createRemoteJWKSet(jwksUrl);
+      }
+      try {
+        const { payload } = await jwtVerify(token, this.jwks, issuer ? { issuer } : undefined);
+        return payload as SupabaseJwtPayload;
+      } catch (error) {
+        jwksError = error;
+      }
+    }
+
+    const legacySecret = this.resolveLegacySecret();
+    if (legacySecret) {
+      try {
+        const { payload } = await jwtVerify(
+          token,
+          legacySecret,
+          issuer ? { issuer, algorithms: ['HS256'] } : { algorithms: ['HS256'] },
+        );
+        return payload as SupabaseJwtPayload;
+      } catch (error) {
+        hsError = error;
+      }
+    }
+
+    if (!jwksUrl && !legacySecret) {
       throw new UnauthorizedException('Supabase auth is not configured');
     }
-    if (!this.jwks) {
-      this.jwks = createRemoteJWKSet(jwksUrl);
-    }
-    const issuer = this.resolveIssuer();
+
+    this.logVerificationFailure(token, issuer, jwksUrl, jwksError, hsError);
+    throw new UnauthorizedException('Invalid Supabase access token');
+  }
+
+  private logVerificationFailure(
+    token: string,
+    issuer: string | undefined,
+    jwksUrl: URL | null,
+    jwksError: unknown,
+    hsError: unknown,
+  ) {
     try {
-      const { payload } = await jwtVerify(token, this.jwks, issuer ? { issuer } : undefined);
-      return payload as SupabaseJwtPayload;
+      const decoded = decodeJwt(token);
+      const header = decodeProtectedHeader(token);
+      const tokenExp = typeof decoded.exp === 'number' ? decoded.exp : undefined;
+      const nowSec = Math.floor(Date.now() / 1000);
+      console.warn('[SupabaseAuth] Token verification failed', {
+        expectedIssuer: issuer,
+        tokenIssuer: typeof decoded.iss === 'string' ? decoded.iss : undefined,
+        tokenExp,
+        nowSec,
+        expired: typeof tokenExp === 'number' ? tokenExp < nowSec : undefined,
+        tokenAlg: header.alg,
+        tokenKid: typeof header.kid === 'string' ? header.kid : undefined,
+        jwksUrl: jwksUrl?.toString(),
+        jwksError: this.describeError(jwksError),
+        hsError: this.describeError(hsError),
+        usedLegacySecret: Boolean(this.resolveLegacySecret()),
+      });
     } catch {
-      try {
-        const decoded = decodeJwt(token);
-        const tokenExp = typeof decoded.exp === 'number' ? decoded.exp : undefined;
-        const nowSec = Math.floor(Date.now() / 1000);
-        console.warn('[SupabaseAuth] Token verification failed', {
-          expectedIssuer: issuer,
-          tokenIssuer: typeof decoded.iss === 'string' ? decoded.iss : undefined,
-          tokenExp,
-          nowSec,
-          expired: typeof tokenExp === 'number' ? tokenExp < nowSec : undefined,
-          jwksUrl: jwksUrl.toString(),
-        });
-      } catch {
-        console.warn('[SupabaseAuth] Token verification failed (unable to decode)');
-      }
-      throw new UnauthorizedException('Invalid Supabase access token');
+      console.warn('[SupabaseAuth] Token verification failed (unable to decode)', {
+        jwksUrl: jwksUrl?.toString(),
+        jwksError: this.describeError(jwksError),
+        hsError: this.describeError(hsError),
+        usedLegacySecret: Boolean(this.resolveLegacySecret()),
+      });
     }
   }
 
@@ -135,6 +179,26 @@ export class SupabaseAuthService {
       return null;
     }
     return new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`);
+  }
+
+  private resolveLegacySecret(): Uint8Array | null {
+    if (this.legacySecret !== undefined) {
+      return this.legacySecret;
+    }
+    const raw = this.config.get<string>('SUPABASE_JWT_SECRET')?.trim();
+    this.legacySecret = raw ? new TextEncoder().encode(raw) : null;
+    return this.legacySecret;
+  }
+
+  private describeError(error: unknown): { name?: string; message?: string } | undefined {
+    if (!error || typeof error !== 'object') {
+      return undefined;
+    }
+    const maybeError = error as { name?: unknown; message?: unknown };
+    return {
+      name: typeof maybeError.name === 'string' ? maybeError.name : undefined,
+      message: typeof maybeError.message === 'string' ? maybeError.message : undefined,
+    };
   }
 
   private resolveRole(payload: SupabaseJwtPayload): UserRole {

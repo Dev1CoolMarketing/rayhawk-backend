@@ -280,12 +280,13 @@ export class AuthController {
     res: Response,
     session: { access_token: string; refresh_token?: string; expires_in?: number },
   ) {
-    const isProd = process.env.NODE_ENV === 'production';
+    const sameSite = this.getCookieSameSite();
+    const secure = this.getCookieSecure(sameSite);
     const accessTokenTtl = session.expires_in ?? 60 * 60;
     res.cookie(this.getAccessCookieName(), session.access_token, {
       httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
+      secure,
+      sameSite,
       path: '/',
       maxAge: accessTokenTtl * 1000,
       domain: this.getCookieDomain(),
@@ -293,8 +294,8 @@ export class AuthController {
     if (session.refresh_token) {
       res.cookie(this.getRefreshCookieName(), session.refresh_token, {
         httpOnly: true,
-        secure: isProd,
-        sameSite: 'lax',
+        secure,
+        sameSite,
         path: '/',
         maxAge: 60 * 60 * 24 * 30 * 1000,
         domain: this.getCookieDomain(),
@@ -303,23 +304,48 @@ export class AuthController {
   }
 
   private clearAuthCookies(res: Response) {
-    const isProd = process.env.NODE_ENV === 'production';
+    const sameSite = this.getCookieSameSite();
+    const secure = this.getCookieSecure(sameSite);
     res.cookie(this.getAccessCookieName(), '', {
       httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
+      secure,
+      sameSite,
       path: '/',
       maxAge: 0,
       domain: this.getCookieDomain(),
     });
     res.cookie(this.getRefreshCookieName(), '', {
       httpOnly: true,
-      secure: isProd,
-      sameSite: 'lax',
+      secure,
+      sameSite,
       path: '/',
       maxAge: 0,
       domain: this.getCookieDomain(),
     });
+  }
+
+  private getCookieSameSite(): 'lax' | 'strict' | 'none' {
+    const raw = (process.env.AUTH_COOKIE_SAME_SITE ?? '').trim().toLowerCase();
+    if (raw === 'lax' || raw === 'strict' || raw === 'none') {
+      return raw;
+    }
+    // In production we frequently serve frontend and API from different origins.
+    return process.env.NODE_ENV === 'production' ? 'none' : 'lax';
+  }
+
+  private getCookieSecure(sameSite: 'lax' | 'strict' | 'none'): boolean {
+    const raw = (process.env.AUTH_COOKIE_SECURE ?? '').trim().toLowerCase();
+    if (raw === 'true') {
+      return true;
+    }
+    if (raw === 'false') {
+      return false;
+    }
+    // Browsers require Secure when SameSite=None.
+    if (sameSite === 'none') {
+      return true;
+    }
+    return process.env.NODE_ENV === 'production';
   }
 
   private readCookie(req: Request, name: string): string | null {
